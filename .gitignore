@@ -1,0 +1,31 @@
+# SwiftPM / build output
+.build/
+build/
+*.xcodeproj/
+.swiftpm/
+Package.resolved
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Recordings / exports that might end up here while testing
+*.mov
+*.mp4
+
+# Signing material (build.sh keeps its certificate in the keychain, never in the repo)
+*.p12
+*.pem
+*.cer
