@@ -46,13 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showSettings() {
         popover.performClose(nil)
         if settingsWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(state: state)))
-            window.title = "Ustawienia ClipRecorder"
-            window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-            window.setContentSize(NSSize(width: 720, height: 540))
-            window.isReleasedWhenClosed = false
-            window.center()
-            settingsWindow = window
+            settingsWindow = SettingsView.makeWindow(state: state)
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Settings window: sidebar with sections (like Whereby/Zoom settings),
-/// native grouped forms on the right.
+/// Settings window in the style of macOS System Settings: translucent sidebar
+/// with colored icons, section title inside the content, native grouped forms.
 struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
         case general, recording, audio, shortcuts, privacy
@@ -36,12 +36,13 @@ struct SettingsView: View {
     }
 
     final class Navigation: ObservableObject {
-        @Published var section: Section?
+        @Published var section: Section
         init(_ section: Section) { self.section = section }
     }
 
     @ObservedObject var state: AppState
     @StateObject private var nav: Navigation
+    @Namespace private var selection
 
     init(state: AppState, section: Section = .general) {
         self.state = state
@@ -49,23 +50,51 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(Section.allCases, selection: $nav.section) { section in
-                Label {
-                    Text(section.title)
-                } icon: {
-                    Image(systemName: section.icon)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(section.color.gradient))
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            detail
+        }
+        .frame(minWidth: 760, maxWidth: .infinity, minHeight: 560, maxHeight: .infinity)
+        .ignoresSafeArea()
+    }
+
+    // System Settings–style sidebar: translucent, colored icons, sliding highlight.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Section.allCases) { section in
+                SidebarRow(section: section, isSelected: nav.section == section, namespace: selection) {
+                    withAnimation(snappy) { nav.section = section }
                 }
-                .tag(section)
             }
-            .navigationSplitViewColumnWidth(170)
-        } detail: {
+            Spacer()
+            HStack(spacing: 8) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 22, height: 22)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("ClipRecorder").font(.caption.weight(.semibold))
+                    Text("Wersja \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 14)
+        }
+        .padding(.top, 52)  // room for the traffic lights
+        .padding(.horizontal, 10)
+        .frame(width: 210)
+        .frame(maxHeight: .infinity)
+        .background(VisualEffect(material: .sidebar))
+    }
+
+    private var detail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(nav.section.title)
+                .font(.system(size: 20, weight: .bold))
+                .padding(.horizontal, 28)
+                .padding(.top, 18)
+                .frame(height: 52, alignment: .bottom)
             Group {
-                switch nav.section ?? .general {
+                switch nav.section {
                 case .general: GeneralSettings(state: state)
                 case .recording: RecordingSettings(state: state)
                 case .audio: AudioSettings(state: state)
@@ -74,13 +103,83 @@ struct SettingsView: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle((nav.section ?? .general).title)
+            .scrollContentBackground(.hidden)
             .id(nav.section)
-            .transition(.opacity.combined(with: .offset(y: 6)))
-            .animation(snappy, value: nav.section)
+            .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 8)), removal: .opacity))
         }
-        .frame(minWidth: 680, minHeight: 500)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .animation(snappy, value: nav.section)
     }
+
+    /// Creates the settings window (borderless-looking title bar, content under it).
+    @MainActor
+    static func makeWindow(state: AppState, section: Section = .general) -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                              styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.contentViewController = NSHostingController(rootView: SettingsView(state: state, section: section))
+        window.title = "Ustawienia ClipRecorder"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.isReleasedWhenClosed = false
+        window.center()
+        return window
+    }
+}
+
+private struct SidebarRow: View {
+    let section: SettingsView.Section
+    let isSelected: Bool
+    let namespace: Namespace.ID
+    let action: () -> Void
+    @StateObject private var hover = Flag()
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: section.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 22, height: 22)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(section.color.gradient))
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                Text(section.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .white : .primary)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 34)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.accentColor)
+                        .matchedGeometryEffect(id: "selection", in: namespace)
+                } else if hover.value {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover.value = h } }
+    }
+}
+
+private struct VisualEffect: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
 // MARK: - Sections

@@ -291,8 +291,8 @@ final class AppState: ObservableObject {
         exports[url] = 0
         Task {
             do {
-                let out = try await ShareExporter.export(url, target: target) { [weak self] p in
-                    Task { @MainActor in if self?.exports[url] != nil { self?.exports[url] = p } }
+                let out = try await ShareExporter.export(url, target: target) { p in
+                    Task { @MainActor in if self.exports[url] != nil { self.exports[url] = p } }
                 }
                 exports[url] = nil
                 copyToPasteboard(out)

@@ -51,9 +51,20 @@ enum Snapshots {
         snap(MenuBarPreview(), "menubar", dark: false, dir: dir)
 
         for section in [SettingsView.Section.recording, .audio, .shortcuts] {
-            snap(SettingsView(state: state, section: section), "settings-\(section.rawValue)", dark: false, dir: dir,
-                 size: NSSize(width: 720, height: 560), background: .windowBackgroundColor)
+            snapWindow(SettingsView.makeWindow(state: state, section: section), "settings-\(section.rawValue)", dir: dir)
         }
+    }
+
+    private static func snapWindow(_ window: NSWindow, _ name: String, dir: URL) {
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.setFrameOrigin(NSPoint(x: -20_000, y: -20_000))
+        window.orderFrontRegardless()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        guard let frameView = window.contentView?.superview,
+              let rep = frameView.bitmapImageRepForCachingDisplay(in: frameView.bounds) else { return }
+        frameView.cacheDisplay(in: frameView.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("\(name).png"))
+        window.orderOut(nil)
     }
 
     private static func snap<V: View>(_ view: V, _ name: String, dark: Bool, dir: URL,
