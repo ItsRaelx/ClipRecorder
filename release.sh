@@ -74,5 +74,5 @@ if [[ -n "${DEVELOPER_ID:-}" ]]; then
   fi
 fi
 
-shasum -a 256 "$DMG" | tee "$DMG.sha256"
+(cd "$DIST" && shasum -a 256 "${DMG:t}" | tee "${DMG:t}.sha256")
 echo "✓ Gotowe: $DMG"
