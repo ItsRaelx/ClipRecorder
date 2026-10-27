@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>ClipRecorder</string>
     <key>CFBundleIdentifier</key>
-    <string>com.local.ClipRecorder</string>
+    <string>io.github.itsraelx.ClipRecorder</string>
     <key>CFBundleExecutable</key>
     <string>ClipRecorder</string>
     <key>CFBundleIconFile</key>
@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
@@ -24,6 +24,12 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>ClipRecorder nagrywa Twój mikrofon na osobną ścieżkę w klipach.</string>
+    <key>ClipRecorderUpdateRepo</key>
+    <string>ItsRaelx/ClipRecorder</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Dawid Iwański · PolyForm Noncommercial 1.0.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.video</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

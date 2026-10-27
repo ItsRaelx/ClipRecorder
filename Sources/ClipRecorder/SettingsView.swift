@@ -193,6 +193,7 @@ private struct GeneralSettings: View {
                 Toggle("Uruchamiaj przy logowaniu", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) }))
                 Toggle("Dźwięki przy starcie i zapisie klipu", isOn: $state.soundsEnabled)
                 Toggle("Pokazuj podgląd po zapisaniu klipu", isOn: $state.showPreview)
+                Toggle("Sprawdzaj dostępność nowych wersji (GitHub)", isOn: $state.checkForUpdates)
             }
             Section {
                 LabeledContent("Folder") {

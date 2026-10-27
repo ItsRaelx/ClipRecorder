@@ -1,6 +1,7 @@
 # SwiftPM / build output
 .build/
 build/
+dist/
 *.xcodeproj/
 .swiftpm/
 Package.resolved
@@ -29,3 +30,4 @@ DerivedData/
 *.p12
 *.pem
 *.cer
+*.p8

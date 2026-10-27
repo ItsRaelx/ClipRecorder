@@ -9,6 +9,7 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
+            UpdateBanner(updater: state.updater)
             Group {
                 switch state.status {
                 case .failed(let text):
@@ -260,6 +261,31 @@ private extension AnyTransition {
 }
 
 // MARK: - Components
+
+private struct UpdateBanner: View {
+    @ObservedObject var updater: UpdateChecker
+
+    var body: some View {
+        if let release = updater.available {
+            Button { NSWorkspace.shared.open(release.url) } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(onColor)
+                        .symbolEffect(.bounce, value: release.version)
+                    Text("Dostępna wersja \(release.version)").font(.caption.weight(.semibold))
+                    Spacer()
+                    Text("Pobierz").font(.caption).foregroundStyle(onColor)
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(RoundedRectangle(cornerRadius: 10).fill(onColor.opacity(0.12)))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
 
 struct MicMenu: View {
     @ObservedObject var state: AppState

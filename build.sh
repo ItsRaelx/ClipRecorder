@@ -1,23 +1,12 @@
 #!/bin/zsh
-# Buduje ClipRecorder.app. Użycie: ./build.sh [--install]
+# Build deweloperski (tylko architektura tego Maca). Użycie: ./build.sh [--install]
+# Wydania publiczne (universal + DMG + notaryzacja): ./release.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
 swift build -c release
 APP=build/ClipRecorder.app
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/ClipRecorder "$APP/Contents/MacOS/"
-cp Resources/Info.plist "$APP/Contents/"
-
-# Ikona: Resources/AppIcon-1024.png → AppIcon.icns (źródło: Tools/make-icon.swift)
-ICONSET=$(mktemp -d)/AppIcon.iconset
-mkdir -p "$ICONSET"
-for s in 16 32 128 256 512; do
-  sips -z $s $s Resources/AppIcon-1024.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-  sips -z $((s*2)) $((s*2)) Resources/AppIcon-1024.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+scripts/make-app.sh .build/release/ClipRecorder "$APP"
 
 # Stały podpis = macOS pamięta uprawnienia (ekran, mikrofon) po przebudowaniu.
 # Bez SIGN_IDENTITY używamy lokalnego certyfikatu, tworzonego jednorazowo w pęku kluczy „login”.

@@ -58,6 +58,7 @@ final class AppState: ObservableObject {
     @Published var cleanupGB: Int { didSet { save(cleanupGB, "cleanupGB"); runCleanup() } }
     @Published var soundsEnabled: Bool { didSet { save(soundsEnabled, "soundsEnabled") } }
     @Published var showPreview: Bool { didSet { save(showPreview, "showPreview") } }
+    @Published var checkForUpdates: Bool { didSet { save(checkForUpdates, "checkForUpdates"); updater.start(enabled: checkForUpdates) } }
     @Published var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
 
     // MARK: Power
@@ -73,6 +74,7 @@ final class AppState: ObservableObject {
     let engine = CaptureEngine()
     /// Separate object so 15 Hz meter updates don't re-render the whole UI.
     let levels = AudioLevels()
+    let updater = UpdateChecker()
     private var ticker: Timer?
     private var messageTask: Task<Void, Never>?
     private var deviceObservers: [Any] = []
@@ -104,8 +106,10 @@ final class AppState: ObservableObject {
     // MARK: Init
 
     init() {
+        Self.migrateLegacyDefaults()
         let d = UserDefaults.standard
         d.register(defaults: [
+            "checkForUpdates": true,
             "maxHeight": 0, "fps": 60, "quality": "medium", "bufferSeconds": 60,
             "includeSystemAudio": true, "includeMic": true,
             "mixSystemVolume": 1.0, "mixMicVolume": 1.0, "limiter": true,
@@ -133,6 +137,7 @@ final class AppState: ObservableObject {
         cleanupGB = d.integer(forKey: "cleanupGB")
         soundsEnabled = d.bool(forKey: "soundsEnabled")
         showPreview = d.bool(forKey: "showPreview")
+        checkForUpdates = d.bool(forKey: "checkForUpdates")
         userPaused = d.bool(forKey: "userPaused")
         pauseOnBattery = d.bool(forKey: "pauseOnBattery")
         pauseOnLowPower = d.bool(forKey: "pauseOnLowPower")
@@ -149,6 +154,18 @@ final class AppState: ObservableObject {
         loadRecentClips()
         wireEngine()
         registerHotKeys()
+        updater.start(enabled: checkForUpdates)
+    }
+
+    /// Settings were stored under the old bundle ID before 1.0.0 – copy them over once.
+    private static func migrateLegacyDefaults() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "migratedLegacyDefaults") else { return }
+        d.set(true, forKey: "migratedLegacyDefaults")
+        guard let old = d.persistentDomain(forName: "com.local.ClipRecorder") else { return }
+        for (key, value) in old where d.object(forKey: key) == nil {
+            d.set(value, forKey: key)
+        }
     }
 
     private func wireEngine() {

@@ -1,0 +1,66 @@
+name: Release
+
+# Uruchamia się po wypchnięciu tagu, np.: git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      # Ustaw w Settings → Secrets and variables → Actions (opis w RELEASING.md).
+      # Bez nich powstaje wydanie testowe podpisane ad-hoc.
+      MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+      NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # build number = liczba commitów
+
+      - name: Import Developer ID certificate
+        if: env.MACOS_CERT_P12_BASE64 != ''
+        run: |
+          KEYCHAIN=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm $RUNNER_TEMP/cert.p12
+
+      - name: Prepare notarization key
+        if: env.NOTARY_KEY_P8_BASE64 != ''
+        run: |
+          echo "$NOTARY_KEY_P8_BASE64" | base64 --decode > $RUNNER_TEMP/AuthKey.p8
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> $GITHUB_ENV
+
+      - name: Build release
+        run: ./release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "$DEVELOPER_ID" ]; then
+            NOTES="Pobierz **ClipRecorder-$VERSION.dmg**, otwórz i przeciągnij ClipRecorder do Programów."
+          else
+            NOTES="⚠️ Wydanie testowe – niepodpisane certyfikatem Apple. Po pierwszym uruchomieniu: Ustawienia systemowe → Prywatność i ochrona → „Otwórz mimo to”. Po każdej aktualizacji trzeba ponownie nadać uprawnienia do nagrywania ekranu i mikrofonu."
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.sha256 \
+            --title "ClipRecorder $VERSION" --notes "$NOTES" --generate-notes
+
+      - name: Clean up keychain
+        if: always() && env.MACOS_CERT_P12_BASE64 != ''
+        run: security delete-keychain $RUNNER_TEMP/signing.keychain-db || true

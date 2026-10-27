@@ -54,23 +54,33 @@ Skróty działają globalnie (także w grach i na pełnym ekranie) i można je z
 
 ## Wymagania
 
-- macOS 15 Sequoia lub nowszy (Apple Silicon lub Intel z enkoderem HEVC)
+- macOS 15 Sequoia lub nowszy (Apple Silicon lub Intel z enkoderem HEVC) – wydania są uniwersalne
 - Xcode albo same Command Line Tools (`xcode-select --install`) – Swift 6
 
-## Budowanie i instalacja
+## Instalacja
+
+### Ze źródeł (zalecane na razie)
 
 ```sh
-git clone https://github.com/<twoj-login>/ClipRecorder.git
+git clone https://github.com/ItsRaelx/ClipRecorder.git
 cd ClipRecorder
 ./build.sh --install   # buduje, kopiuje do /Applications i uruchamia
 ```
 
 Samo `./build.sh` tworzy `build/ClipRecorder.app` bez instalowania.
 
+### Gotowe wydania
+
+Wersje testowe (DMG) pojawiają się w [Releases](https://github.com/ItsRaelx/ClipRecorder/releases).
+Nie są jeszcze podpisane certyfikatem Apple, więc przy pierwszym uruchomieniu wejdź w
+Ustawienia systemowe → Prywatność i ochrona → **Otwórz mimo to**.
+
+### Uprawnienia
+
 Przy pierwszym uruchomieniu zezwól na **Mikrofon** oraz **Nagrywanie ekranu i dźwięku systemowego**
 (Ustawienia systemowe → Prywatność i ochrona), a potem uruchom aplikację ponownie.
 
-### Podpisywanie
+### Podpisywanie przy budowaniu ze źródeł
 
 macOS wiąże uprawnienia do nagrywania ekranu z podpisem aplikacji. Żeby nie trzeba było ich nadawać po każdym przebudowaniu,
 `build.sh` przy pierwszym uruchomieniu **tworzy lokalny, samopodpisany certyfikat „ClipRecorder Local Signing”
@@ -87,8 +97,8 @@ SIGN_IDENTITY=- ./build.sh                                                      
 Jeśli po przebudowaniu macOS pyta o uprawnienia, mimo że są włączone w Ustawieniach, zresetuj stare wpisy:
 
 ```sh
-tccutil reset ScreenCapture com.local.ClipRecorder
-tccutil reset Microphone com.local.ClipRecorder
+tccutil reset ScreenCapture io.github.itsraelx.ClipRecorder
+tccutil reset Microphone io.github.itsraelx.ClipRecorder
 ```
 
 ## Ścieżki audio w klipie
@@ -112,6 +122,8 @@ można przełączyć się na pojedynczą ścieżkę. DaVinci Resolve, Final Cut 
 | `HotKey.swift` | globalne skróty (Carbon `RegisterEventHotKey` – bez uprawnień Dostępności) |
 | `AppState.swift` | stan i ustawienia aplikacji |
 | `PopoverView.swift`, `RecordingHUD.swift`, `ClipPreview.swift`, `SettingsView.swift` | interfejs (SwiftUI) |
+| `UpdateChecker.swift` | sprawdzanie nowych wersji w GitHub Releases |
+| `build.sh` / `release.sh` | build deweloperski / universal DMG z opcjonalnym podpisem i notaryzacją |
 | `Tools/make-icon.swift` | generator ikony aplikacji |
 
 Podgląd interfejsu bez uruchamiania nagrywania (renderuje PNG do wskazanego folderu):
@@ -119,6 +131,15 @@ Podgląd interfejsu bez uruchamiania nagrywania (renderuje PNG do wskazanego fol
 ```sh
 swift build -c release && .build/release/ClipRecorder --snapshot /tmp/clipsnap
 ```
+
+## Prywatność
+
+ClipRecorder nie wysyła nigdzie nagrań ani danych. Jedyne połączenie sieciowe to raz dziennie zapytanie do
+publicznego API GitHuba o najnowszą wersję (można je wyłączyć w Ustawieniach → Ogólne).
+
+## Wydawanie
+
+Jak zbudować DMG i (z kontem Apple Developer) podpisane, notaryzowane wydania: [RELEASING.md](RELEASING.md).
 
 ## Ograniczenia
 
