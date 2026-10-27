@@ -7,8 +7,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ClipRecorder",
-            path: "Sources/ClipRecorder",
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            path: "Sources/ClipRecorder"
         )
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
