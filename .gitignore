@@ -1,4 +1,4 @@
-# SwiftPM / build output
+# macOS app: SwiftPM / build output
 .build/
 build/
 dist/
@@ -17,6 +17,15 @@ DerivedData/
 .LSOverride
 ._*
 
+# Windows app (.NET / Visual Studio)
+bin/
+obj/
+.vs/
+*.user
+*.suo
+publish/
+AppPackages/
+
 # Editors
 .vscode/
 .idea/
@@ -31,3 +40,4 @@ DerivedData/
 *.pem
 *.cer
 *.p8
+*.pfx

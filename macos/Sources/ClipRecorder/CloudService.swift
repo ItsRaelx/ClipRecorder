@@ -450,6 +450,8 @@ final class CloudService: ObservableObject {
         var request = URLRequest(url: base.appending(path: path))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Server error messages come back in this language; the app's UI is Polish.
+        request.setValue("pl", forHTTPHeaderField: "Accept-Language")
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         request.setValue("ClipRecorder/\(version) (macOS)", forHTTPHeaderField: "User-Agent")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }

@@ -26,11 +26,12 @@ shasum -a 256 -c ClipRecorder-1.0.0.dmg.sha256
 
 ```sh
 git clone https://github.com/ItsRaelx/ClipRecorder.git
-cd ClipRecorder
+cd ClipRecorder/macos
 ./build.sh --install   # buduje, kopiuje do /Applications i uruchamia
 ```
 
-Samo `./build.sh` tworzy `build/ClipRecorder.app` bez instalowania.
+Samo `./build.sh` tworzy `macos/build/ClipRecorder.app` bez instalowania. Wszystkie polecenia poniżej uruchamiasz
+w folderze `macos/`.
 
 ### Podpis przy budowaniu
 

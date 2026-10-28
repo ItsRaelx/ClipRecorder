@@ -2,10 +2,11 @@
 
 [← Spis treści](README.md)
 
-ClipRecorder to pakiet Swift (bez projektu Xcode) zbudowany na ScreenCaptureKit, VideoToolbox, AVFoundation
-i SwiftUI. Wystarczą same Command Line Tools.
+Aplikacja na macOS to pakiet Swift (bez projektu Xcode) w folderze [`macos/`](../../macos), zbudowany na
+ScreenCaptureKit, VideoToolbox, AVFoundation i SwiftUI. Wystarczą same Command Line Tools.
 
 ```sh
+cd macos
 swift build -c release   # binarka w .build/release/ClipRecorder
 ./build.sh --install     # paczka .app z podpisem, instalacja w /Applications
 ./release.sh 1.1.0       # universal DMG (opcjonalnie podpis Developer ID + notaryzacja), wynik w dist/
@@ -58,10 +59,10 @@ ScreenCaptureKit ──► obraz ──► VideoToolbox (HEVC, w czasie rzeczywi
 
 ## Zrzuty ekranu
 
-Wszystkie obrazki w `docs/screenshots` są generowane z kodu, bez prawdziwego nagrywania i bez sieci:
+Wszystkie obrazki w `docs/macos/screenshots` są generowane z kodu, bez prawdziwego nagrywania i bez sieci:
 
 ```sh
-scripts/snapshots.sh            # → docs/screenshots
+scripts/snapshots.sh            # → docs/macos/screenshots (uruchamiane w macos/)
 scripts/snapshots.sh /tmp/snap  # albo do innego folderu
 ```
 
@@ -77,9 +78,9 @@ Po zmianie interfejsu uruchom skrypt i dołącz nowe obrazki do commita.
 
 ## Wydania
 
-Wersję podbija się w `Resources/Info.plist`. Tag `v*` uruchamia workflow **Release**, który buduje universal DMG
+Wersję podbija się w `macos/Resources/Info.plist`. Tag `v*` uruchamia workflow **Release**, który buduje universal DMG
 i publikuje go w GitHub Releases razem z sumą SHA-256. Szczegóły, w tym podpisywanie i notaryzację,
-opisuje [RELEASING.md](../RELEASING.md).
+opisuje [macos/RELEASING.md](../../macos/RELEASING.md).
 
 Workflow **Build** buduje aplikację przy każdym pushu do `main` i każdym pull requeście.
 

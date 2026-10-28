@@ -1,12 +1,12 @@
 #!/bin/zsh
-# Renderuje zrzuty interfejsu (dokumentacja, README). Użycie: scripts/snapshots.sh [folder]
-# Domyślnie zapisuje do docs/screenshots.
+# Renderuje zrzuty interfejsu (dokumentacja, README). Użycie (w folderze macos/): scripts/snapshots.sh [folder]
+# Domyślnie zapisuje do ../docs/macos/screenshots.
 #
 # Generator działa w tymczasowej paczce .app z osobnym identyfikatorem: elementy systemowe
 # (np. pasek przycinania) są po polsku, a ustawienia zainstalowanej aplikacji zostają nietknięte.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-OUT=${1:-docs/screenshots}
+OUT=${1:-../docs/macos/screenshots}
 
 swift build -c release
 TMP=$(mktemp -d)

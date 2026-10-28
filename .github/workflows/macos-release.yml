@@ -1,6 +1,7 @@
-name: Release
+name: Release (macOS)
 
 # Uruchamia się po wypchnięciu tagu, np.: git tag v1.0.0 && git push origin v1.0.0
+# Tagi v* to wydania na macOS; Windows ma osobne tagi windows-v*.
 on:
   push:
     tags: ["v*"]
@@ -11,8 +12,11 @@ permissions:
 jobs:
   release:
     runs-on: macos-15
+    defaults:
+      run:
+        working-directory: macos
     env:
-      # Ustaw w Settings → Secrets and variables → Actions (opis w RELEASING.md).
+      # Ustaw w Settings → Secrets and variables → Actions (opis w macos/RELEASING.md).
       # Bez nich powstaje wydanie testowe podpisane ad-hoc.
       MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
       MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -62,8 +66,10 @@ jobs:
           else
             NOTES="⚠️ Wydanie testowe – niepodpisane certyfikatem Apple. Po pierwszym uruchomieniu: Ustawienia systemowe → Prywatność i ochrona → „Otwórz mimo to”. Po każdej aktualizacji trzeba ponownie nadać uprawnienia do nagrywania ekranu i mikrofonu."
           fi
-          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.sha256 \
-            --title "ClipRecorder $VERSION" --notes "$NOTES" --generate-notes
+          # --latest: aplikacja na Maca sprawdza aktualizacje przez /releases/latest,
+          # więc „najnowsze” wydanie w repozytorium musi zawsze być wydaniem na macOS.
+          gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.sha256 --latest \
+            --title "ClipRecorder $VERSION (macOS)" --notes "$NOTES" --generate-notes
 
       - name: Clean up keychain
         if: always() && env.MACOS_CERT_P12_BASE64 != ''
