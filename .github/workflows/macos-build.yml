@@ -7,6 +7,10 @@ on:
   pull_request:
     paths: ["macos/**", ".github/workflows/macos-*.yml"]
 
+# The build only reads the repository; artifacts don't need token permissions.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-15
