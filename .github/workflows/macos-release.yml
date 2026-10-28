@@ -1,7 +1,7 @@
 name: Release (macOS)
 
-# Uruchamia się po wypchnięciu tagu, np.: git tag v1.0.0 && git push origin v1.0.0
-# Tagi v* to wydania na macOS; Windows ma osobne tagi windows-v*.
+# Runs when a tag is pushed, e.g.: git tag v1.0.0 && git push origin v1.0.0
+# v* tags are macOS releases; Windows uses separate windows-v* tags.
 on:
   push:
     tags: ["v*"]
@@ -16,8 +16,8 @@ jobs:
       run:
         working-directory: macos
     env:
-      # Ustaw w Settings → Secrets and variables → Actions (opis w macos/RELEASING.md).
-      # Bez nich powstaje wydanie testowe podpisane ad-hoc.
+      # Set them in Settings → Secrets and variables → Actions (see macos/RELEASING.md).
+      # Without them the workflow publishes an ad-hoc signed test release.
       MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
       MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
       DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # build number = liczba commitów
+          fetch-depth: 0  # build number = number of commits
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -62,12 +62,12 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           if [ -n "$DEVELOPER_ID" ]; then
-            NOTES="Pobierz **ClipRecorder-$VERSION.dmg**, otwórz i przeciągnij ClipRecorder do Programów."
+            NOTES="Download **ClipRecorder-$VERSION.dmg**, open it and drag ClipRecorder into Applications."$'\n\n'"🇵🇱 Pobierz **ClipRecorder-$VERSION.dmg**, otwórz i przeciągnij ClipRecorder do Aplikacji."
           else
-            NOTES="⚠️ Wydanie testowe – niepodpisane certyfikatem Apple. Po pierwszym uruchomieniu: Ustawienia systemowe → Prywatność i ochrona → „Otwórz mimo to”. Po każdej aktualizacji trzeba ponownie nadać uprawnienia do nagrywania ekranu i mikrofonu."
+            NOTES="⚠️ Test release – not signed with an Apple certificate. After the first launch go to System Settings → Privacy & Security → Open Anyway. After every update you need to grant the screen recording and microphone permissions again."$'\n\n'"🇵🇱 ⚠️ Wydanie testowe – niepodpisane certyfikatem Apple. Po pierwszym uruchomieniu: Ustawienia systemowe → Prywatność i ochrona → „Otwórz mimo to”. Po każdej aktualizacji trzeba ponownie nadać uprawnienia do nagrywania ekranu i mikrofonu."
           fi
-          # --latest: aplikacja na Maca sprawdza aktualizacje przez /releases/latest,
-          # więc „najnowsze” wydanie w repozytorium musi zawsze być wydaniem na macOS.
+          # --latest: the macOS app checks for updates via /releases/latest,
+          # so the repository's "latest" release must always be a macOS release.
           gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.sha256 --latest \
             --title "ClipRecorder $VERSION (macOS)" --notes "$NOTES" --generate-notes
 

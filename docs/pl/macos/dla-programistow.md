@@ -1,8 +1,8 @@
 # Dla programistów
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/developers.md)
 
-Aplikacja na macOS to pakiet Swift (bez projektu Xcode) w folderze [`macos/`](../../macos), zbudowany na
+Aplikacja na macOS to pakiet Swift (bez projektu Xcode) w folderze [`macos/`](../../../macos), zbudowany na
 ScreenCaptureKit, VideoToolbox, AVFoundation i SwiftUI. Wystarczą same Command Line Tools.
 
 ```sh
@@ -59,15 +59,15 @@ ScreenCaptureKit ──► obraz ──► VideoToolbox (HEVC, w czasie rzeczywi
 
 ## Zrzuty ekranu
 
-Wszystkie obrazki w `docs/macos/screenshots` są generowane z kodu, bez prawdziwego nagrywania i bez sieci:
+Wszystkie obrazki w `docs/en/macos/screenshots` i `docs/pl/macos/screenshots` są generowane z kodu, bez prawdziwego
+nagrywania i bez sieci:
 
 ```sh
-scripts/snapshots.sh            # → docs/macos/screenshots (uruchamiane w macos/)
-scripts/snapshots.sh /tmp/snap  # albo do innego folderu
+scripts/snapshots.sh   # → docs/en/macos/screenshots i docs/pl/macos/screenshots (uruchamiane w macos/)
 ```
 
 Skrypt uruchamia aplikację z `--snapshot` w tymczasowej paczce `.app` z osobnym identyfikatorem. Dzięki temu:
-- systemowe elementy są po polsku;
+- systemowe elementy są w języku danego zestawu zrzutów;
 - startuje z domyślnymi ustawieniami;
 - nie dotyka ustawień ani pęku kluczy zainstalowanej aplikacji.
 
@@ -80,13 +80,14 @@ Po zmianie interfejsu uruchom skrypt i dołącz nowe obrazki do commita.
 
 Wersję podbija się w `macos/Resources/Info.plist`. Tag `v*` uruchamia workflow **Release**, który buduje universal DMG
 i publikuje go w GitHub Releases razem z sumą SHA-256. Szczegóły, w tym podpisywanie i notaryzację,
-opisuje [macos/RELEASING.md](../../macos/RELEASING.md).
+opisuje [macos/RELEASING.md](../../../macos/RELEASING.md).
 
 Workflow **Build** buduje aplikację przy każdym pushu do `main` i każdym pull requeście.
 
 ## Konwencje
 
 - Swift 5 language mode (Swift 6 toolchain), macOS 15+.
-- Interfejs jest po polsku. Komentarze w kodzie są po angielsku.
+- Teksty interfejsu są w kodzie po angielsku, a polskie tłumaczenia leżą w
+  `macos/Resources/pl.lproj/Localizable.strings`. Komentarze w kodzie są po angielsku.
 - Stan mutowalny silnika żyje na jednej szeregowej kolejce (`CaptureEngine.queue`), a stan UI na `MainActor`.
 - Bez zależności zewnętrznych.

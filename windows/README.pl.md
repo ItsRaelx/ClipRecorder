@@ -1,5 +1,7 @@
 # ClipRecorder na Windowsa
 
+[🇬🇧 English](README.md)
+
 > **Status: w przygotowaniu.** Ten folder jest zarezerwowany na aplikację na Windowsa. Kodu jeszcze nie ma.
 > Działająca wersja na macOS jest w [`../macos`](../macos).
 
@@ -17,7 +19,7 @@ Ta sama aplikacja co na macOS, w wersji natywnej dla Windowsa:
 - adresy `cliprecorder://` do automatyzacji.
 
 Pełny opis zachowania (to jest specyfikacja dla wersji na Windowsa) jest w
-[dokumentacji wersji na macOS](../docs/macos/README.md).
+[dokumentacji wersji na macOS](../docs/pl/macos/README.md).
 
 ## Planowany stos
 
@@ -41,7 +43,7 @@ Do potwierdzenia przed rozpoczęciem prac. Propozycja: **C# / .NET** z interfejs
 | Co | Gdzie / jak |
 |---|---|
 | Kod aplikacji | `windows/` (np. `windows/src/…`, rozwiązanie `.sln` w `windows/`) |
-| Dokumentacja | [`docs/windows/`](../docs/windows/README.md) |
+| Dokumentacja | [`docs/en/windows/`](../docs/en/windows/README.md), [`docs/pl/windows/`](../docs/pl/windows/README.md) |
 | CI | `.github/workflows/windows-*.yml` z filtrem `paths: ["windows/**"]` |
 | Tagi wydań | `windows-v0.1.0`, `windows-v0.2.0`, …  (macOS używa `v1.0.0`) |
 | Wydania na GitHubie | tytuł „ClipRecorder X (Windows)”, publikowane z **`--latest=false`** |
@@ -60,7 +62,7 @@ Wersja na Windowsa powinna szukać aktualizacji na liście wydań, wśród tagó
   Implementacją wzorcową jest [`macos/Sources/ClipRecorder/CloudService.swift`](../macos/Sources/ClipRecorder/CloudService.swift).
 - **Ikona:** [`macos/Resources/AppIcon-1024.png`](../macos/Resources/AppIcon-1024.png)
   (generator: [`macos/Tools/make-icon.swift`](../macos/Tools/make-icon.swift)).
-- **Teksty interfejsu:** po polsku, jak na macOS.
+- **Teksty interfejsu:** po angielsku i po polsku, zależnie od języka systemu, jak na macOS.
 - **Licencja:** ta sama, [PolyForm Noncommercial 1.0.0](../LICENSE).
 
 ## Testowanie

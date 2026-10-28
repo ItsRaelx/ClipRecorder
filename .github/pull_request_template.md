@@ -1,20 +1,20 @@
-## Co zmienia ten PR
+## What this PR changes
 
-<!-- Krótko: co i dlaczego. Jeśli zamyka zgłoszenie, dopisz „Closes #123”. -->
+<!-- Briefly: what and why. If it fixes an issue, add "Closes #123". -->
 
-## Platforma
+## Platform
 
 - [ ] macOS
 - [ ] Windows
-- [ ] dokumentacja / CI
+- [ ] docs / CI
 
-## Jak sprawdzone
+## How it was tested
 
-<!-- Np. „nagrałem klip 5 min z mikrofonem AirPods”, „przetestowane na macOS 15.3, M1”. -->
+<!-- E.g. "recorded a 5 min clip with an AirPods mic", "tested on macOS 15.3, M1". -->
 
-## Lista kontrolna
+## Checklist
 
-- [ ] buduje się bez ostrzeżeń (`cd macos && ./build.sh`)
-- [ ] teksty w interfejsie po polsku, komentarze w kodzie po angielsku
-- [ ] jeśli zmienia się wygląd: nowe zrzuty (`cd macos && scripts/snapshots.sh`)
-- [ ] dokumentacja w `docs/` zaktualizowana, jeśli zmienia się działanie
+- [ ] builds without warnings (`cd macos && ./build.sh`)
+- [ ] new UI strings in English in code, Polish added to `macos/Resources/pl.lproj/Localizable.strings`
+- [ ] if the UI changed: new screenshots (`cd macos && scripts/snapshots.sh`)
+- [ ] docs updated in `docs/en` and `docs/pl` if behavior changed

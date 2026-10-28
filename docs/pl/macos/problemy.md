@@ -1,6 +1,6 @@
 # Rozwiązywanie problemów
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/troubleshooting.md)
 
 ## Uprawnienia
 

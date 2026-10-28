@@ -1,6 +1,6 @@
 # ClipRecorder na macOS – dokumentacja
 
-[← Dokumentacja](../README.md) · [Windows](../windows/README.md)
+[← Dokumentacja](../../README.md) · [Windows](../windows/README.md) · [🇬🇧 English](../../en/macos/README.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="screenshots/hero-dark.png">
@@ -37,10 +37,10 @@ naciskasz skrót i klip zawiera to, co **już minęło**.
 - Bez logowania aplikacja niczego nie wysyła. Po zalogowaniu na [clip.secc.me](https://clip.secc.me)
   jednym kliknięciem dostajesz link do klipu.
 - Wymagania: macOS 15 Sequoia lub nowszy.
+- Aplikacja mówi językiem systemu: po polsku w polskim systemie, w pozostałych po angielsku.
 
 ## Ograniczenia
 
 - Nagrywany jest jeden ekran albo jedno okno naraz.
 - Zmiana źródła, rozdzielczości, płynności lub jakości czyści bufor.
 - Bufor 5 / 10 min oznacza ciągły zapis na dysk (rzędu 100–300 MB na minutę, nadpisywany w kółko).
-- Interfejs jest tylko po polsku.

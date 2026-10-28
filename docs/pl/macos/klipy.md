@@ -1,6 +1,6 @@
 # Klipy
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/clips.md)
 
 ## Dwa sposoby zapisu
 

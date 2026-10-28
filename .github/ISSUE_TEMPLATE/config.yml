@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: ❓ Pytanie albo pomoc
+  - name: ❓ Question or help
     url: https://github.com/ItsRaelx/ClipRecorder/discussions/categories/q-a
-    about: Jak coś zrobić, czy to normalne zachowanie? Zapytaj w Dyskusjach.
-  - name: 📖 Dokumentacja i rozwiązywanie problemów
-    url: https://github.com/ItsRaelx/ClipRecorder/blob/main/docs/macos/problemy.md
-    about: Uprawnienia, pęk kluczy, skróty, dźwięk, miejsce na dysku – najczęstsze problemy i rozwiązania.
-  - name: 🔒 Luka bezpieczeństwa
+    about: How do I…? Is this expected? Ask in Discussions (English or Polish).
+  - name: 📖 Documentation and troubleshooting
+    url: https://github.com/ItsRaelx/ClipRecorder/blob/main/docs/en/macos/troubleshooting.md
+    about: Permissions, Keychain, shortcuts, audio, disk space – the most common problems and fixes.
+  - name: 🔒 Security vulnerability
     url: https://github.com/ItsRaelx/ClipRecorder/security/advisories/new
-    about: Zgłoś prywatnie, nie w publicznym zgłoszeniu. Zobacz SECURITY.md.
+    about: Report it privately, not in a public issue. See SECURITY.md.

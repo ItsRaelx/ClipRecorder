@@ -1,4 +1,4 @@
-# Aktualizacje akcji GitHuba (aplikacja na macOS nie ma zewnętrznych zależności).
+# Keeps GitHub Actions up to date (the macOS app has no external dependencies).
 version: 2
 updates:
   - package-ecosystem: github-actions

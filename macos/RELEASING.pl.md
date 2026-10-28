@@ -1,9 +1,11 @@
 # Wydawanie ClipRecordera na macOS
 
+[🇬🇧 English](RELEASING.md)
+
 Wszystkie polecenia uruchamiasz w folderze `macos/`.
 
 Tagi `v*` (np. `v1.1.0`) to wydania na macOS. Aplikacja na Windowsa ma własne tagi `windows-v*`
-(zob. [windows/README.md](../windows/README.md)), więc oba wydania się nie mieszają.
+(zob. [windows/README.pl.md](../windows/README.pl.md)), więc oba wydania się nie mieszają.
 
 ## Wydanie (każdorazowo)
 

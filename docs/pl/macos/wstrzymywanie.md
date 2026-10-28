@@ -1,6 +1,6 @@
 # Wstrzymywanie i oszczędzanie energii
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/pausing.md)
 
 Bufor w tle to ciągłe kodowanie wideo. Na Apple Silicon zajmuje to zwykle kilka procent CPU, ale na baterii
 albo przy prezentacji możesz chcieć, żeby aplikacja na chwilę przestała nagrywać.

@@ -1,6 +1,6 @@
 # Pierwsze kroki
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/getting-started.md)
 
 ## Jak działa bufor
 

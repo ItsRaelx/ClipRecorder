@@ -1,5 +1,7 @@
 # Bezpieczeństwo
 
+[🇬🇧 English](SECURITY.md)
+
 ## Obsługiwane wersje
 
 | Wersja | Poprawki bezpieczeństwa |

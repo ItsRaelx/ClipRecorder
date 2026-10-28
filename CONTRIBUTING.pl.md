@@ -1,5 +1,7 @@
 # Jak pomóc
 
+[🇬🇧 English](CONTRIBUTING.md)
+
 Dzięki, że chcesz pomóc przy ClipRecorderze! Każda pomoc się przydaje: zgłoszenie błędu, pomysł, poprawka
 w dokumentacji czy kod.
 
@@ -9,17 +11,17 @@ w dokumentacji czy kod.
   Formularz poprosi o wersję aplikacji, system i kroki do powtórzenia.
 - **Pomysł:** [nowe zgłoszenie → Pomysł na funkcję](https://github.com/ItsRaelx/ClipRecorder/issues/new/choose).
 - **Pytanie:** [Dyskusje → Q&A](https://github.com/ItsRaelx/ClipRecorder/discussions/categories/q-a).
-- **Luka bezpieczeństwa:** wyłącznie prywatnie, zobacz [SECURITY.md](SECURITY.md).
+- **Luka bezpieczeństwa:** wyłącznie prywatnie, zobacz [SECURITY.pl.md](SECURITY.pl.md).
 
 ## Struktura repozytorium
 
 | Folder | Zawartość |
 |---|---|
 | `macos/` | aplikacja na macOS (pakiet Swift) |
-| `windows/` | aplikacja na Windowsa (w przygotowaniu, zobacz [windows/README.md](windows/README.md)) |
-| `docs/` | dokumentacja dla użytkowników, ze zrzutami ekranu |
+| `windows/` | aplikacja na Windowsa (w przygotowaniu, zobacz [windows/README.pl.md](windows/README.pl.md)) |
+| `docs/` | dokumentacja dla użytkowników ze zrzutami ekranu, po angielsku (`docs/en`) i po polsku (`docs/pl`) |
 
-Opis architektury aplikacji na macOS: [docs/macos/dla-programistow.md](docs/macos/dla-programistow.md).
+Opis architektury aplikacji na macOS: [docs/pl/macos/dla-programistow.md](docs/pl/macos/dla-programistow.md).
 
 ## Budowanie (macOS)
 
@@ -32,19 +34,20 @@ cd macos
 ```
 
 `build.sh` podpisuje aplikację lokalnym certyfikatem, żeby uprawnienia do nagrywania ekranu przetrwały kolejne
-kompilacje ([szczegóły](docs/macos/instalacja.md#podpis-przy-budowaniu)).
+kompilacje ([szczegóły](docs/pl/macos/instalacja.md#podpis-przy-budowaniu)).
 
 ## Pull requesty
 
 1. Przy większych zmianach najpierw otwórz zgłoszenie albo dyskusję. Łatwiej ustalić kierunek, zanim powstanie kod.
 2. Zrób fork i gałąź od `main`.
 3. Trzymaj się stylu otaczającego kodu:
-   - teksty w interfejsie **po polsku**, krótko i bez żargonu;
+   - teksty w interfejsie piszemy w kodzie **po angielsku**, a polskie tłumaczenie dodajemy do
+     `macos/Resources/pl.lproj/Localizable.strings`. Krótko i bez żargonu, w obu językach;
    - komentarze i nazwy w kodzie **po angielsku**;
    - bez zewnętrznych zależności, jeśli nie są naprawdę potrzebne.
 4. Sprawdź, że projekt buduje się bez ostrzeżeń.
 5. Jeśli zmieniasz wygląd, wygeneruj nowe zrzuty: `cd macos && scripts/snapshots.sh`.
-6. Jeśli zmieniasz działanie, zaktualizuj dokumentację w `docs/`.
+6. Jeśli zmieniasz działanie, zaktualizuj dokumentację w `docs/en` i `docs/pl`.
 7. Otwórz PR i wypełnij szablon. CI zbuduje aplikację automatycznie.
 
 Wiadomości commitów piszemy po angielsku, w trybie rozkazującym, np. „Fix marker count after trimming”.
@@ -56,4 +59,4 @@ udostępnione na tej samej licencji.
 
 ## Zasady
 
-Obowiązuje nas [kodeks postępowania](.github/CODE_OF_CONDUCT.md). Krótko: życzliwość i szacunek.
+Obowiązuje nas [kodeks postępowania](.github/CODE_OF_CONDUCT.pl.md). Krótko: życzliwość i szacunek.

@@ -1,20 +1,21 @@
-name: 🐞 Zgłoś błąd
-description: Coś nie działa tak, jak powinno.
-title: "[Błąd] "
+name: 🐞 Report a bug
+description: Something doesn't work the way it should.
+title: "[Bug] "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Dzięki za zgłoszenie! Zanim je wyślesz, zajrzyj do
-        [rozwiązywania problemów](https://github.com/ItsRaelx/ClipRecorder/blob/main/docs/macos/problemy.md)
-        i [istniejących zgłoszeń](https://github.com/ItsRaelx/ClipRecorder/issues?q=is%3Aissue).
+        Thanks for reporting! Before you submit, please check
+        [troubleshooting](https://github.com/ItsRaelx/ClipRecorder/blob/main/docs/en/macos/troubleshooting.md)
+        and [existing issues](https://github.com/ItsRaelx/ClipRecorder/issues?q=is%3Aissue).
+        You can write in English or Polish.
 
-        **Luki bezpieczeństwa zgłaszaj prywatnie** – zobacz [SECURITY.md](https://github.com/ItsRaelx/ClipRecorder/blob/main/SECURITY.md).
+        **Report security vulnerabilities privately** – see [SECURITY.md](https://github.com/ItsRaelx/ClipRecorder/blob/main/SECURITY.md).
   - type: dropdown
     id: platform
     attributes:
-      label: Platforma
+      label: Platform
       options:
         - macOS
         - Windows
@@ -23,68 +24,68 @@ body:
   - type: input
     id: app-version
     attributes:
-      label: Wersja ClipRecordera
-      description: Ustawienia → lewy dolny róg okna.
+      label: ClipRecorder version
+      description: Settings → bottom-left corner of the window.
       placeholder: "1.0.0"
     validations:
       required: true
   - type: input
     id: os-version
     attributes:
-      label: System i komputer
+      label: System and computer
       placeholder: "macOS 15.3, MacBook Air M2"
     validations:
       required: true
   - type: dropdown
     id: area
     attributes:
-      label: Czego dotyczy
+      label: Area
       multiple: true
       options:
-        - Nagrywanie obrazu
-        - Dźwięk (komputer / mikrofon)
-        - Skróty klawiszowe
-        - Podgląd po zapisie / przycinanie
-        - Udostępnianie linkiem (clip.secc.me)
-        - Ustawienia
-        - Wstrzymywanie / bateria / blokada ekranu
-        - Automatyzacja (cliprecorder://)
-        - Instalacja / uprawnienia / aktualizacje
-        - Inne
+        - Video recording
+        - Audio (system / microphone)
+        - Keyboard shortcuts
+        - Preview after saving / trimming
+        - Sharing by link (clip.secc.me)
+        - Settings
+        - Pausing / battery / screen lock
+        - Automation (cliprecorder://)
+        - Installation / permissions / updates
+        - Other
   - type: textarea
     id: what-happened
     attributes:
-      label: Co się stało?
-      description: Opisz problem. Zrzut ekranu albo krótkie nagranie bardzo pomaga.
+      label: What happened?
+      description: Describe the problem. A screenshot or a short recording helps a lot.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Jak to powtórzyć?
+      label: Steps to reproduce
       placeholder: |
-        1. Ustaw bufor na 5 min
-        2. Naciśnij ⌃⌥S
+        1. Set the buffer to 5 min
+        2. Press ⌃⌥S
         3. …
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Czego się spodziewałeś?
+      label: What did you expect?
   - type: textarea
     id: logs
     attributes:
       label: Log
       description: |
-        Na macOS uruchom w Terminalu poniższe polecenie, powtórz problem i wklej wynik:
+        On macOS, run this in Terminal, reproduce the problem and paste the output:
         `log stream --predicate 'process == "ClipRecorder"' --level info`
       render: text
   - type: checkboxes
     id: checks
     attributes:
-      label: Sprawdziłem, że
+      label: I checked that
       options:
-        - label: używam najnowszej wersji aplikacji
-        - label: podobnego zgłoszenia jeszcze nie ma
+        - label: I'm using the latest version of the app
+        - label: there's no similar issue yet
           required: true

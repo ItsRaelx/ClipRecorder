@@ -1,6 +1,6 @@
 # Udostępnianie linkiem (clip.secc.me)
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/sharing.md)
 
 Zamiast wysyłać plik możesz wysłać link. Klip trafia na Twoje konto na [clip.secc.me](https://clip.secc.me),
 a link ląduje w schowku. Discord, Messenger, Slack czy iMessage pokażą pod linkiem odtwarzacz.

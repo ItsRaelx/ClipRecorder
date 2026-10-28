@@ -5,29 +5,29 @@
 <h1 align="center">ClipRecorder</h1>
 
 <p align="center">
-  Nagrywanie „ostatniej minuty” ekranu – jak instant replay w grach, tylko dla całego komputera.<br>
-  <i>A menu bar / tray app that keeps a rolling buffer of your screen, system audio and microphone and saves the last minute with a hotkey.</i>
+  Nagrywanie „ostatniej minuty” ekranu – jak instant replay w grach, tylko dla całego komputera.
 </p>
 
 <p align="center">
+  <a href="README.md">🇬🇧 English</a> ·
   <a href="https://github.com/ItsRaelx/ClipRecorder/releases/latest">Pobierz</a> ·
-  <a href="docs/macos/README.md">Dokumentacja</a> ·
-  <a href="docs/macos/problemy.md">Pomoc</a>
+  <a href="docs/pl/macos/README.md">Dokumentacja</a> ·
+  <a href="docs/pl/macos/problemy.md">Pomoc</a>
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/macos/screenshots/hero-dark.png">
-  <img src="docs/macos/screenshots/hero-light.png" alt="ClipRecorder: popover w pasku menu i podgląd zapisanego klipu">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/pl/macos/screenshots/hero-dark.png">
+  <img src="docs/pl/macos/screenshots/hero-light.png" alt="ClipRecorder: popover w pasku menu i podgląd zapisanego klipu">
 </picture>
 
 ## Platformy
 
 | | Stan | |
 |---|---|---|
-| **macOS** 15+ | ✅ dostępna | [pobierz](https://github.com/ItsRaelx/ClipRecorder/releases/latest) · [dokumentacja](docs/macos/README.md) · kod w [`macos/`](macos) |
-| **Windows** 10/11 | 🚧 w przygotowaniu | plan w [`windows/`](windows/README.md) |
+| **macOS** 15+ | ✅ dostępna | [pobierz](https://github.com/ItsRaelx/ClipRecorder/releases/latest) · [dokumentacja](docs/pl/macos/README.md) · kod w [`macos/`](macos) |
+| **Windows** 10/11 | 🚧 w przygotowaniu | plan w [`windows/`](windows/README.pl.md) |
 
-Opis poniżej dotyczy wersji na macOS.
+Opis poniżej dotyczy wersji na macOS. Aplikacja mówi po polsku albo po angielsku, zależnie od języka systemu.
 
 ## Jak to działa
 
@@ -65,8 +65,8 @@ Skróty działają wszędzie, także w grach i na pełnym ekranie, i można je z
 <td width="50%" valign="top">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/macos/screenshots/popover-recording-dark.png">
-  <img src="docs/macos/screenshots/popover-recording-light.png" width="340" alt="Popover w trakcie nagrywania">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/pl/macos/screenshots/popover-recording-dark.png">
+  <img src="docs/pl/macos/screenshots/popover-recording-light.png" width="340" alt="Popover w trakcie nagrywania">
 </picture>
 
 </td>
@@ -74,7 +74,7 @@ Skróty działają wszędzie, także w grach i na pełnym ekranie, i można je z
 <tr>
 <td width="50%" valign="top">
 
-<img src="docs/macos/screenshots/preview-shared.png" width="332" alt="Podgląd po zapisie z linkiem">
+<img src="docs/pl/macos/screenshots/preview-shared.png" width="332" alt="Podgląd po zapisie z linkiem">
 
 </td>
 <td width="50%" valign="top">
@@ -97,12 +97,12 @@ Skróty działają wszędzie, także w grach i na pełnym ekranie, i można je z
 </table>
 
 <p align="center">
-  <img src="docs/macos/screenshots/hud.png" width="360" alt="Pasek nagrywania">
+  <img src="docs/pl/macos/screenshots/hud.png" width="360" alt="Pasek nagrywania">
 </p>
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/macos/screenshots/settings-recording-dark.png">
-  <img src="docs/macos/screenshots/settings-recording-light.png" alt="Ustawienia nagrywania">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/pl/macos/screenshots/settings-recording-dark.png">
+  <img src="docs/pl/macos/screenshots/settings-recording-light.png" alt="Ustawienia nagrywania">
 </picture>
 
 ## Instalacja (macOS)
@@ -120,7 +120,7 @@ cd ClipRecorder/macos
 ```
 
 Przy pierwszym uruchomieniu zezwól na **Nagrywanie ekranu i dźwięku systemowego** oraz **Mikrofon**.
-Szczegóły (podpisywanie, aktualizacje, odinstalowanie): [docs/macos/instalacja.md](docs/macos/instalacja.md).
+Szczegóły (podpisywanie, aktualizacje, odinstalowanie): [docs/pl/macos/instalacja.md](docs/pl/macos/instalacja.md).
 
 Wymagania: macOS 15 Sequoia lub nowszy, Apple Silicon albo Intel z enkoderem HEVC.
 
@@ -128,30 +128,30 @@ Wymagania: macOS 15 Sequoia lub nowszy, Apple Silicon albo Intel z enkoderem HEV
 
 | | |
 |---|---|
-| [Pierwsze kroki](docs/macos/pierwsze-kroki.md) | ikona w pasku menu, popover, szybkie menu, jak działa bufor |
-| [Klipy](docs/macos/klipy.md) | zapis i nagrywanie, znaczniki, podgląd, przycinanie, pliki i ścieżki dźwięku |
-| [Udostępnianie linkiem](docs/macos/udostepnianie.md) | konto clip.secc.me, wysyłanie, widoczność, limity |
-| [Wstrzymywanie i energia](docs/macos/wstrzymywanie.md) | pauza na czas, bateria, blokada ekranu |
-| [Ustawienia](docs/macos/ustawienia.md) | każda opcja ze zrzutem ekranu |
-| [Automatyzacja](docs/macos/automatyzacja.md) | `cliprecorder://`, Skróty, Stream Deck, Raycast |
-| [Rozwiązywanie problemów](docs/macos/problemy.md) | uprawnienia, pęk kluczy, skróty, dźwięk, dysk |
-| [Dla programistów](docs/macos/dla-programistow.md) | architektura, zrzuty ekranu, wydania |
+| [Pierwsze kroki](docs/pl/macos/pierwsze-kroki.md) | ikona w pasku menu, popover, szybkie menu, jak działa bufor |
+| [Klipy](docs/pl/macos/klipy.md) | zapis i nagrywanie, znaczniki, podgląd, przycinanie, pliki i ścieżki dźwięku |
+| [Udostępnianie linkiem](docs/pl/macos/udostepnianie.md) | konto clip.secc.me, wysyłanie, widoczność, limity |
+| [Wstrzymywanie i energia](docs/pl/macos/wstrzymywanie.md) | pauza na czas, bateria, blokada ekranu |
+| [Ustawienia](docs/pl/macos/ustawienia.md) | każda opcja ze zrzutem ekranu |
+| [Automatyzacja](docs/pl/macos/automatyzacja.md) | `cliprecorder://`, Skróty, Stream Deck, Raycast |
+| [Rozwiązywanie problemów](docs/pl/macos/problemy.md) | uprawnienia, pęk kluczy, skróty, dźwięk, dysk |
+| [Dla programistów](docs/pl/macos/dla-programistow.md) | architektura, zrzuty ekranu, wydania |
 
 ## Struktura repozytorium
 
 | Folder | Zawartość |
 |---|---|
-| [`macos/`](macos) | aplikacja na macOS (pakiet Swift), skrypty budowania i wydawania, [RELEASING.md](macos/RELEASING.md) |
-| [`windows/`](windows) | miejsce na aplikację na Windowsa (w przygotowaniu) |
-| [`docs/`](docs/README.md) | dokumentacja obu wersji ze zrzutami ekranu |
+| [`macos/`](macos) | aplikacja na macOS (pakiet Swift), skrypty budowania i wydawania, [RELEASING.pl.md](macos/RELEASING.pl.md) |
+| [`windows/`](windows/README.pl.md) | miejsce na aplikację na Windowsa (w przygotowaniu) |
+| [`docs/`](docs/README.md#polski) | dokumentacja obu wersji, po angielsku (`docs/en`) i po polsku (`docs/pl`) |
 | `.github/workflows/` | CI: `macos-build`, `macos-release` (tagi `v*`); Windows dostanie `windows-*` (tagi `windows-v*`) |
 
 ## Współpraca
 
 - Błąd albo pomysł? [Nowe zgłoszenie](https://github.com/ItsRaelx/ClipRecorder/issues/new/choose).
 - Pytanie? [Dyskusje](https://github.com/ItsRaelx/ClipRecorder/discussions).
-- Chcesz pomóc w kodzie? Zobacz [CONTRIBUTING.md](CONTRIBUTING.md).
-- Luka bezpieczeństwa? Zgłoś prywatnie, zgodnie z [SECURITY.md](SECURITY.md).
+- Chcesz pomóc w kodzie? Zobacz [CONTRIBUTING.pl.md](CONTRIBUTING.pl.md).
+- Luka bezpieczeństwa? Zgłoś prywatnie, zgodnie z [SECURITY.pl.md](SECURITY.pl.md).
 
 ## Prywatność
 

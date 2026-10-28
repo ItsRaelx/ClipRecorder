@@ -1,40 +1,43 @@
-name: 💡 Pomysł na funkcję
-description: Zaproponuj nową funkcję albo usprawnienie.
-title: "[Pomysł] "
+name: 💡 Feature idea
+description: Suggest a new feature or an improvement.
+title: "[Idea] "
 labels: ["enhancement"]
 body:
+  - type: markdown
+    attributes:
+      value: You can write in English or Polish.
   - type: dropdown
     id: platform
     attributes:
-      label: Platforma
+      label: Platform
       options:
         - macOS
         - Windows
-        - Obie
+        - Both
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
-      label: Jaki problem to rozwiąże?
-      description: Opisz sytuację, w której tego brakuje, np. „Gdy gram w …, chciałbym …”.
+      label: What problem would it solve?
+      description: Describe when you miss it, e.g. "When I play …, I'd like to …".
     validations:
       required: true
   - type: textarea
     id: solution
     attributes:
-      label: Jak by to mogło działać?
+      label: How could it work?
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Rozważane alternatywy
-      description: Inne rozwiązania albo aplikacje, które robią to dobrze.
+      label: Alternatives considered
+      description: Other solutions, or apps that do this well.
   - type: checkboxes
     id: checks
     attributes:
-      label: Sprawdziłem, że
+      label: I checked that
       options:
-        - label: podobnego pomysłu nie ma w zgłoszeniach ani w Dyskusjach
+        - label: there's no similar idea in issues or Discussions
           required: true

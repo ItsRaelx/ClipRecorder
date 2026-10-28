@@ -1,5 +1,7 @@
 # Kodeks postępowania
 
+[🇬🇧 English](CODE_OF_CONDUCT.md)
+
 Opracowany na podstawie [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 
 ## Zobowiązanie

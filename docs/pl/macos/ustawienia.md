@@ -1,6 +1,6 @@
 # Ustawienia
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/settings.md)
 
 Okno ustawień otworzysz:
 - przyciskiem **Ustawienia** w popoverze;

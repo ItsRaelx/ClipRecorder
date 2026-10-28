@@ -1,6 +1,6 @@
 # Automatyzacja
 
-[← Spis treści](README.md)
+[← Spis treści](README.md) · [🇬🇧 English](../../en/macos/automation.md)
 
 ClipRecorder obsługuje adresy `cliprecorder://`. Każdy program, który potrafi otworzyć adres URL, może więc sterować
 nagrywaniem: aplikacja Skróty, Stream Deck, Raycast, Alfred, Keyboard Maestro, BetterTouchTool, skrypty w Terminalu.
