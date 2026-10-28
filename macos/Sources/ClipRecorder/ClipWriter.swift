@@ -23,13 +23,15 @@ final class ClipWriter {
 
         let video = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
         video.expectsMediaDataInRealTime = true
-        try add(video, for: .video, name: "Ekran")
+        try add(video, for: .video, name: String(localized: "Screen"))
 
         if let systemFormat {
-            try add(Self.audioInput(for: systemFormat, bitrate: 192_000), for: .system, name: "Dźwięk systemu")
+            // Own key: the UI's "System audio" toggle reads differently in Polish.
+            let name = String(localized: "track.system-audio", defaultValue: "System audio")
+            try add(Self.audioInput(for: systemFormat, bitrate: 192_000), for: .system, name: name)
         }
         if let micFormat {
-            try add(Self.audioInput(for: micFormat, bitrate: 128_000), for: .mic, name: "Mikrofon")
+            try add(Self.audioInput(for: micFormat, bitrate: 128_000), for: .mic, name: String(localized: "Microphone"))
         }
 
         guard writer.startWriting() else {
@@ -45,7 +47,7 @@ final class ClipWriter {
         input.metadata = [title]
         guard writer.canAdd(input) else {
             throw NSError(domain: "ClipRecorder", code: 3,
-                          userInfo: [NSLocalizedDescriptionKey: "Nie można dodać ścieżki „\(name)”."])
+                          userInfo: [NSLocalizedDescriptionKey: String(localized: "Couldn’t add the “\(name)” track.")])
         }
         writer.add(input)
         inputs[track] = input

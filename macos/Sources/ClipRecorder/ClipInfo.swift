@@ -1,7 +1,7 @@
 import AppKit
 import AVFoundation
 
-/// Thumbnail, length and size of saved clips for the "Ostatnie klipy" list.
+/// Thumbnail, length and size of saved clips for the "Recent clips" list.
 /// Loaded lazily in the background and cached per file version (path + modification
 /// date), so a trimmed clip gets a fresh entry.
 @MainActor
@@ -53,12 +53,12 @@ final class ClipInfoStore: ObservableObject {
                     created: values.creationDate ?? Date())
     }
 
-    /// "Dziś, 21:06" / "Wczoraj, 20:45" / "27 paź, 19:12".
+    /// "Today, 9:06 PM" / "Yesterday, 8:45 PM" / "Oct 27, 7:12 PM" (in the user's locale).
     static func label(for date: Date) -> String {
         let calendar = Calendar.current
         let time = date.formatted(date: .omitted, time: .shortened)
-        if calendar.isDateInToday(date) { return "Dziś, \(time)" }
-        if calendar.isDateInYesterday(date) { return "Wczoraj, \(time)" }
+        if calendar.isDateInToday(date) { return String(localized: "Today, \(time)") }
+        if calendar.isDateInYesterday(date) { return String(localized: "Yesterday, \(time)") }
         return date.formatted(.dateTime.day().month(.abbreviated)) + ", " + time
     }
 }

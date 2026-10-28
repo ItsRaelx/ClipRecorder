@@ -23,7 +23,7 @@ final class AppState: ObservableObject {
     @Published var markerCount = 0
     @Published var isFinalizing = false
     /// Export progress (0…1) per clip.
-    /// "Udostępnij link" progress (export + upload, 0…1) per clip.
+    /// "Share link" progress (export + upload, 0…1) per clip.
     @Published var shares: [URL: Double] = [:]
     @Published private(set) var microphones: [Microphones.Device] = []
     @Published private(set) var activeMic: Microphones.Device?
@@ -72,7 +72,7 @@ final class AppState: ObservableObject {
             updateRunning()
         }
     }
-    /// End of a timed pause ("Wstrzymaj na 15 minut"); nil = until resumed by hand.
+    /// End of a timed pause ("Pause for 15 minutes"); nil = until resumed by hand.
     @Published private(set) var pausedUntil: Date? {
         didSet { save(pausedUntil, "pausedUntil"); scheduleAutoResume() }
     }
@@ -93,14 +93,14 @@ final class AppState: ObservableObject {
     let cloud = CloudService()
     /// Clip to upload as soon as the browser login completes.
     private var pendingShare: URL?
-    /// Running "Udostępnij link" jobs, so they can be cancelled.
+    /// Running "Share link" jobs, so they can be cancelled.
     private var shareTasks: [URL: Task<Void, Never>] = [:]
     private var cancellables = Set<AnyCancellable>()
     private var ticker: Timer?
     private var messageTask: Task<Void, Never>?
     private var deviceObservers: [Any] = []
     private var resumeTask: Task<Void, Never>?
-    /// "Nagrywaj mimo to" while paused for battery/low power – lasts until the power state changes.
+    /// "Record anyway" while paused for battery/low power – lasts until the power state changes.
     private var ignorePowerPause = false
     /// Screen locked or asleep: macOS doesn't allow capturing then. Pause quietly and
     /// start again the moment the user is back (instead of retrying with a backoff).
@@ -228,7 +228,8 @@ final class AppState: ObservableObject {
                     self.shareTasks.values.forEach { $0.cancel() }  // signed out → stop uploads
                     return
                 }
-                self.flash("Zalogowano jako \(account.name.isEmpty ? account.email : account.name).")
+                let name = account.name.isEmpty ? account.email : account.name
+                self.flash(String(localized: "Signed in as \(name)."))
                 if let url = self.pendingShare {
                     self.pendingShare = nil
                     self.shareLink(url)
@@ -267,7 +268,7 @@ final class AppState: ObservableObject {
             self.stopTicker()
             self.updateRunning()  // a power pause may have been waiting for the clip to end
             self.isFinalizing = true
-            self.flash("Zapisywanie klipu…")
+            self.flash(String(localized: "Saving clip…"))
         }
         engine.onMarkerAdded = { [weak self] count in
             self?.markerCount = count
@@ -312,7 +313,7 @@ final class AppState: ObservableObject {
             applyMicDevice()  // device list is empty until mic access is granted
             guard CGPreflightScreenCaptureAccess() else {
                 CGRequestScreenCaptureAccess()
-                status = .failed("Włącz ClipRecorder w Ustawieniach systemowych → Prywatność i ochrona → Nagrywanie ekranu i dźwięku systemowego. Potem uruchom aplikację ponownie.")
+                status = .failed(String(localized: "Turn on ClipRecorder in System Settings → Privacy & Security → Screen & System Audio Recording. Then relaunch the app."))
                 watchScreenPermission()
                 return
             }
@@ -372,17 +373,17 @@ final class AppState: ObservableObject {
         let power = PowerMonitor.shared
         let reason: String?
         if screenAway {
-            reason = "Ekran zablokowany"
+            reason = String(localized: "Screen locked")
         } else if userPaused, let pausedUntil {
-            reason = "Wstrzymane do \(pausedUntil.formatted(date: .omitted, time: .shortened))"
+            reason = Self.pausedUntilReason(pausedUntil)
         } else if userPaused {
-            reason = "Wstrzymane"
+            reason = String(localized: "Paused")
         } else if ignorePowerPause {
             reason = nil
         } else if pauseOnLowPower && power.isLowPowerMode {
-            reason = "Wstrzymane w trybie oszczędzania energii"
+            reason = String(localized: "Paused in Low Power Mode")
         } else if pauseOnBattery && power.isOnBattery {
-            reason = "Wstrzymane na baterii"
+            reason = String(localized: "Paused on battery")
         } else {
             reason = nil
         }
@@ -464,7 +465,7 @@ final class AppState: ObservableObject {
             if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
             guard !Task.isCancelled, let self, self.userPaused else { return }
             self.resume()
-            self.flash("Nagrywanie w tle wznowione.")
+            self.flash(String(localized: "Background recording resumed."))
         }
     }
     func openSettings(_ section: SettingsView.Section? = nil) { onOpenSettings?(section) }
@@ -484,9 +485,10 @@ final class AppState: ObservableObject {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             recentClips.removeAll { $0 == url }
             cloud.forgetLink(for: url)
-            flash("Przeniesiono do Kosza: \(url.deletingPathExtension().lastPathComponent)")
+            let name = url.deletingPathExtension().lastPathComponent
+            flash(String(localized: "Moved to Trash: \(name)"))
         } catch {
-            flash("Nie udało się usunąć: \(error.localizedDescription)")
+            flash(String(localized: "Couldn’t delete: \(error.localizedDescription)"))
         }
     }
 
@@ -505,7 +507,7 @@ final class AppState: ObservableObject {
             // Already waiting for the browser → keep that code (a new one would invalidate it).
             if cloud.pendingLogin == nil { cloud.startLogin() } else { cloud.reopenLoginPage() }
             pendingShare = url
-            flash("Zaloguj się w przeglądarce. Potem klip wyśle się sam.")
+            flash(String(localized: "Sign in in your browser. The clip will upload right after."))
             return
         }
         guard shares[url] == nil else { return }
@@ -520,12 +522,13 @@ final class AppState: ObservableObject {
                 return
             }
             if quota.plan.uploadsPerDay > 0, quota.usage.uploadsToday >= quota.plan.uploadsPerDay {
-                flash("Dzisiejszy limit wysyłek (\(quota.plan.uploadsPerDay)) jest wykorzystany.")
+                let limit = String(quota.plan.uploadsPerDay)
+                flash(String(localized: "You’ve reached today’s upload limit (\(limit))."))
                 play("Basso")
                 return
             }
             if quota.plan.storageBytes > 0, quota.usage.bytes >= quota.plan.storageBytes {
-                flash("Brak miejsca na koncie. Usuń stare klipy na stronie albo zmień plan.")
+                flash(String(localized: "No space left on your account. Delete old clips on the website or change your plan."))
                 play("Basso")
                 return
             }
@@ -544,7 +547,7 @@ final class AppState: ObservableObject {
                 if let quota = cloud.quota, quota.plan.maxClipBytes > 0,
                    let size = try? mp4.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) > quota.plan.maxClipBytes {
                     let limit = ByteCountFormatter.string(fromByteCount: quota.plan.maxClipBytes, countStyle: .file)
-                    throw CloudService.CloudError(message: "Klip jest za duży na Twój plan (do \(limit)). Przytnij go.")
+                    throw CloudService.CloudError(message: String(localized: "The clip is too big for your plan (up to \(limit)). Trim it."))
                 }
                 let info = await Self.uploadInfo(for: mp4, title: url.deletingPathExtension().lastPathComponent)
                 let link = try await cloud.upload(mp4, info: info) { p in
@@ -559,9 +562,9 @@ final class AppState: ObservableObject {
                 shares[url] = nil
                 if Task.isCancelled || error is CancellationError {
                     // Deleting the clip cancels too – its own toast says enough then.
-                    if FileManager.default.fileExists(atPath: url.path) { flash("Anulowano udostępnianie.") }
+                    if FileManager.default.fileExists(atPath: url.path) { flash(String(localized: "Sharing cancelled.")) }
                 } else {
-                    flash("Udostępnianie nie powiodło się: \(error.localizedDescription)")
+                    flash(String(localized: "Sharing failed: \(error.localizedDescription)"))
                     play("Basso")
                 }
             }
@@ -580,7 +583,7 @@ final class AppState: ObservableObject {
     func copyLink(_ link: URL) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(link.absoluteString, forType: .string)
-        flash("Link skopiowany.")
+        flash(String(localized: "Link copied."))
     }
 
     func openLink(_ url: URL) {
@@ -612,14 +615,15 @@ final class AppState: ObservableObject {
             guard let self else { return }
             self.cloud.forgetLink(for: url)  // the shared copy is the untrimmed version
             self.isFinalizing = true
-            self.flash("Przycinanie…")
+            self.flash(String(localized: "Trimming…"))
             Task {
                 do {
                     try await ClipFinalizer.process(url, options: .init(mix: nil, chapters: nil, timeRange: range))
-                    self.flash("Przycięto do \(formatDuration(range.duration.seconds)).")
+                    let length = formatDuration(range.duration.seconds)
+                    self.flash(String(localized: "Trimmed to \(length)."))
                     self.onClipReady?(url)
                 } catch {
-                    self.flash("Przycinanie nie powiodło się: \(error.localizedDescription)")
+                    self.flash(String(localized: "Trimming failed: \(error.localizedDescription)"))
                 }
                 self.isFinalizing = false
             }
@@ -663,7 +667,7 @@ final class AppState: ObservableObject {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.directoryURL = clipsDirectory
-        panel.prompt = "Wybierz"
+        panel.prompt = String(localized: "Choose")
         NSApp.activate(ignoringOtherApps: true)
         if panel.runModal() == .OK, let url = panel.url { clipsDirectory = url }
     }
@@ -672,7 +676,7 @@ final class AppState: ObservableObject {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            flash("Nie udało się zmienić logowania: \(error.localizedDescription)")
+            flash(String(localized: "Couldn’t change Launch at login: \(error.localizedDescription)"))
         }
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
@@ -740,7 +744,8 @@ final class AppState: ObservableObject {
         recentClips.removeAll { $0 == url }
         recentClips.insert(url, at: 0)
         recentClips = Array(recentClips.prefix(5))
-        flash("Zapisano: \(url.deletingPathExtension().lastPathComponent)")
+        let name = url.deletingPathExtension().lastPathComponent
+        flash(String(localized: "Saved: \(name)"))
         play("Glass")
         runCleanup(protecting: [url])
         if showPreview { onClipReady?(url) }
@@ -798,6 +803,12 @@ final class AppState: ObservableObject {
             try? await Task.sleep(for: .seconds(6))
             if !Task.isCancelled { message = nil }
         }
+    }
+
+    /// "Paused until 9:45 PM" – the time in the user's locale.
+    static func pausedUntilReason(_ date: Date) -> String {
+        let time = date.formatted(date: .omitted, time: .shortened)
+        return String(localized: "Paused until \(time)")
     }
 
     static func durationLabel(_ seconds: Int) -> String {

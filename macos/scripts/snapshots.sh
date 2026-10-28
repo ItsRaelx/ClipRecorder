@@ -1,24 +1,29 @@
 #!/bin/zsh
-# Renderuje zrzuty interfejsu (dokumentacja, README). Użycie (w folderze macos/): scripts/snapshots.sh [folder]
-# Domyślnie zapisuje do ../docs/macos/screenshots.
+# Renders the UI screenshots (docs, README) in every language. Usage (inside macos/): scripts/snapshots.sh
+# English goes to ../docs/en/macos/screenshots, Polish to ../docs/pl/macos/screenshots (same file names).
 #
-# Generator działa w tymczasowej paczce .app z osobnym identyfikatorem: elementy systemowe
-# (np. pasek przycinania) są po polsku, a ustawienia zainstalowanej aplikacji zostają nietknięte.
+# The generator runs in a temporary .app bundle with its own identifier: it carries the app's
+# translations (so system-provided parts such as the trim bar follow the language too), and the
+# installed app's settings stay untouched.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-OUT=${1:-../docs/macos/screenshots}
 
 swift build -c release
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 APP="$TMP/ClipRecorder Snapshots.app"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/ClipRecorder "$APP/Contents/MacOS/ClipRecorder"
+for lproj in Resources/*.lproj; do cp -R "$lproj" "$APP/Contents/Resources/"; done
 plutil -convert xml1 -o "$APP/Contents/Info.plist" Resources/Info.plist
 plutil -replace CFBundleIdentifier -string io.github.itsraelx.ClipRecorder.snapshots "$APP/Contents/Info.plist"
 
-mkdir -p "$OUT"
-"$APP/Contents/MacOS/ClipRecorder" --snapshot "$OUT"
-# Zrzuty „hero” mają 2560 px szerokości – do README wystarczy 1600.
-for f in "$OUT"/hero-*.png; do sips -Z 1600 "$f" >/dev/null; done
-echo "✓ Zrzuty w $OUT"
+# language  locale (time and number formats in the pictures)
+for lang locale in en en_US pl pl_PL; do
+  OUT=../docs/$lang/macos/screenshots
+  mkdir -p "$OUT"
+  "$APP/Contents/MacOS/ClipRecorder" --snapshot "$OUT" -AppleLanguages "($lang)" -AppleLocale "$locale"
+  # The hero shots are 2560 px wide – 1600 is plenty for the README.
+  for f in "$OUT"/hero-*.png; do sips -Z 1600 "$f" >/dev/null; done
+  echo "✓ Screenshots ($lang) in $OUT"
+done

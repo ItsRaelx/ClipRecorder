@@ -6,11 +6,13 @@
     <string>ClipRecorder</string>
     <key>CFBundleDisplayName</key>
     <string>ClipRecorder</string>
-    <!-- The UI is Polish: system-provided parts (trim bar, standard menus) follow it. -->
+    <!-- English is the base language, Polish a translation (Resources/*.lproj). The app follows
+         the system language; system-provided parts (trim bar, standard menus) follow the app. -->
     <key>CFBundleDevelopmentRegion</key>
-    <string>pl</string>
+    <string>en</string>
     <key>CFBundleLocalizations</key>
     <array>
+        <string>en</string>
         <string>pl</string>
     </array>
     <key>CFBundleIdentifier</key>
@@ -30,7 +32,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>ClipRecorder nagrywa Twój mikrofon na osobną ścieżkę w klipach.</string>
+    <string>ClipRecorder records your microphone to a separate track in your clips.</string>
     <key>ClipRecorderUpdateRepo</key>
     <string>ItsRaelx/ClipRecorder</string>
     <key>ClipRecorderCloudServer</key>

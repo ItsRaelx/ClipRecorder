@@ -67,11 +67,11 @@ struct PopoverView: View {
     private var statusPill: some View {
         let (label, color, pulsing): (String, Color, Bool) = {
             switch state.status {
-            case .starting: return ("Uruchamianie…", .secondary, true)
-            case .buffering: return ("Gotowy", onColor, true)
-            case .recording: return ("Nagrywanie", accent, true)
-            case .paused: return ("Wstrzymane", .orange, false)
-            case .failed: return ("Brak dostępu", .orange, false)
+            case .starting: return (String(localized: "Starting…"), .secondary, true)
+            case .buffering: return (String(localized: "Ready"), onColor, true)
+            case .recording: return (String(localized: "Recording"), accent, true)
+            case .paused: return (String(localized: "Paused"), .orange, false)
+            case .failed: return (String(localized: "No access"), .orange, false)
             }
         }()
         return HStack(spacing: 6) {
@@ -90,17 +90,17 @@ struct PopoverView: View {
 
     private var sources: some View {
         VStack(spacing: 6) {
-            SourceRow(icon: "speaker.wave.2.fill", title: "Dźwięk komputera", isOn: state.includeSystemAudio) {
+            SourceRow(icon: "speaker.wave.2.fill", title: String(localized: "System audio"), isOn: state.includeSystemAudio) {
                 if state.includeSystemAudio { TrackMeter(levels: state.levels, track: .system) }
                 OnOffPill(isOn: $state.includeSystemAudio)
             }
-            SourceRow(icon: state.includeMic ? "mic.fill" : "mic.slash.fill", title: "Mikrofon", isOn: state.includeMic) {
+            SourceRow(icon: state.includeMic ? "mic.fill" : "mic.slash.fill", title: String(localized: "Microphone"), isOn: state.includeMic) {
                 MicMenu(state: state)
                 if state.includeMic { TrackMeter(levels: state.levels, track: .mic) }
                 OnOffPill(isOn: $state.includeMic)
             }
             if state.includeMic, state.activeMic?.isBluetooth == true {
-                Label("Mikrofon w słuchawkach Bluetooth pogarsza jakość muzyki.",
+                Label("A Bluetooth headset mic lowers music quality.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -121,8 +121,8 @@ struct PopoverView: View {
                 HStack(spacing: 10) {
                     PulsingDot()
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Nagrywanie").font(.subheadline.weight(.semibold))
-                        Text(state.markerCount == 0 ? "od \(state.bufferLabel) wstecz" : "od \(state.bufferLabel) wstecz · znaczniki: \(state.markerCount)")
+                        Text("Recording").font(.subheadline.weight(.semibold))
+                        Text(recordingDetail)
                             .font(.caption).foregroundStyle(.secondary)
                             .contentTransition(.numericText())
                     }
@@ -135,13 +135,13 @@ struct PopoverView: View {
                 }
                 HStack(spacing: 8) {
                     Button(action: state.addMarker) {
-                        Label("Znacznik", systemImage: "bookmark.fill")
+                        Label("Marker", systemImage: "bookmark.fill")
                             .symbolEffect(.bounce, value: state.markerCount)
                     }
                     .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.1), foreground: .primary))
                     .fixedSize()
                     Button(action: state.toggleClip) {
-                        Label("Zatrzymaj i zapisz", systemImage: "stop.fill").frame(maxWidth: .infinity)
+                        Label("Stop and save", systemImage: "stop.fill").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(BigButtonStyle(fill: accent))
                 }
@@ -153,19 +153,19 @@ struct PopoverView: View {
         } else {
             VStack(spacing: 8) {
                 Button(action: state.toggleClip) {
-                    Label("Nagrywaj od \(state.bufferLabel) wstecz", systemImage: "record.circle.fill")
+                    Label("Record from \(state.bufferLabel) ago", systemImage: "record.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: accent))
                 Button(action: state.saveInstantClip) {
-                    Label("Zapisz ostatnie \(state.bufferLabel)", systemImage: "bolt.fill")
+                    Label("Save last \(state.bufferLabel)", systemImage: "bolt.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
                 HStack(spacing: 6) {
-                    ShortcutHint(combo: state.toggleCombo, text: "nagraj")
-                    ShortcutHint(combo: state.instantCombo, text: "zapisz")
-                    ShortcutHint(combo: state.markerCombo, text: "znacznik")
+                    ShortcutHint(combo: state.toggleCombo, text: String(localized: "record"))
+                    ShortcutHint(combo: state.instantCombo, text: String(localized: "save"))
+                    ShortcutHint(combo: state.markerCombo, text: String(localized: "marker"))
                 }
                 .padding(.top, 2)
                 .frame(maxWidth: .infinity)
@@ -173,6 +173,14 @@ struct PopoverView: View {
             .disabled(state.status != .buffering)
             .transition(.scale(scale: 0.95).combined(with: .opacity))
         }
+    }
+
+    /// "from 1 min ago" / "from 1 min ago · markers: 2"
+    private var recordingDetail: String {
+        let from = String(localized: "from \(state.bufferLabel) ago")
+        guard state.markerCount > 0 else { return from }
+        let count = String(state.markerCount)
+        return from + " · " + String(localized: "markers: \(count)")
     }
 
     private func pausedCard(_ reason: String) -> some View {
@@ -184,21 +192,21 @@ struct PopoverView: View {
                     .symbolEffect(.pulse)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(reason).font(.subheadline.weight(.semibold))
-                    Text("Aplikacja nic teraz nie nagrywa.").font(.caption).foregroundStyle(.secondary)
+                    Text("Nothing is being recorded right now.").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if state.userPaused {
-                    Button("Wznów", action: state.resume)
+                    Button("Resume", action: state.resume)
                         .buttonStyle(BigButtonStyle(fill: onColor))
                         .fixedSize()
                 }
             }
             if state.isPowerPaused {
                 Button(action: state.resumeDespitePower) {
-                    Label("Nagrywaj mimo to", systemImage: "play.fill").frame(maxWidth: .infinity)
+                    Label("Record anyway", systemImage: "play.fill").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
-                .help("Do następnej zmiany zasilania")
+                .help("Until the power source changes")
             }
         }
         .padding(12)
@@ -208,23 +216,23 @@ struct PopoverView: View {
     private func permissionCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if state.permissionGranted {
-                Label("Dostęp nadany", systemImage: "checkmark.seal.fill")
+                Label("Permission granted", systemImage: "checkmark.seal.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(onColor)
-                Text("Uruchom aplikację ponownie, żeby zaczęła nagrywać.")
+                Text("Relaunch the app so it can start recording.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button(action: state.relaunch) {
-                    Label("Uruchom ponownie", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                    Label("Relaunch", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: onColor))
             } else {
-                Label("Potrzebny dostęp", systemImage: "lock.trianglebadge.exclamationmark")
+                Label("Permission needed", systemImage: "lock.trianglebadge.exclamationmark")
                     .font(.subheadline.weight(.semibold))
                 Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Button("Otwórz Ustawienia", action: state.openPrivacySettings)
+                    Button("Open Settings", action: state.openPrivacySettings)
                         .buttonStyle(BigButtonStyle(fill: accent))
-                    Button("Uruchom ponownie", action: state.relaunch)
+                    Button("Relaunch", action: state.relaunch)
                         .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
                 }
             }
@@ -238,12 +246,12 @@ struct PopoverView: View {
     private var recentClips: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Ostatnie klipy").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("Recent clips").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 if state.isFinalizing {
                     ProgressView().controlSize(.mini).transition(.scale.combined(with: .opacity))
                 }
                 Spacer()
-                Button("Pokaż folder", action: state.openClipsFolder)
+                Button("Show folder", action: state.openClipsFolder)
                     .buttonStyle(.link)
                     .font(.caption)
             }
@@ -266,9 +274,9 @@ struct PopoverView: View {
             Button {
                 state.openSettings()
             } label: {
-                Label("Ustawienia", systemImage: "gearshape").fixedSize()
+                Label("Settings", systemImage: "gearshape").fixedSize()
             }
-            Button("Zakończ") { NSApp.terminate(nil) }.fixedSize()
+            Button("Quit") { NSApp.terminate(nil) }.fixedSize()
         }
         .buttonStyle(.borderless)
         .font(.caption)
@@ -293,9 +301,9 @@ private struct UpdateBanner: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.down.circle.fill").foregroundStyle(onColor)
                         .symbolEffect(.bounce, value: release.version)
-                    Text("Dostępna wersja \(release.version)").font(.caption.weight(.semibold))
+                    Text("Version \(release.version) available").font(.caption.weight(.semibold))
                     Spacer()
-                    Text("Pobierz").font(.caption).foregroundStyle(onColor)
+                    Text("Download").font(.caption).foregroundStyle(onColor)
                     Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 10)
@@ -315,7 +323,7 @@ struct MicMenu: View {
     var body: some View {
         Menu {
             Picker("", selection: $state.micSelection) {
-                Text("Automatycznie").tag(Microphones.auto)
+                Text("Automatic").tag(Microphones.auto)
                 Divider()
                 ForEach(state.microphones) { mic in
                     Text(mic.isBluetooth ? "\(mic.name) – Bluetooth" : mic.name).tag(mic.id)
@@ -324,7 +332,7 @@ struct MicMenu: View {
             .pickerStyle(.inline)
             .labelsHidden()
         } label: {
-            Text(state.activeMic?.name ?? "Brak")
+            Text(state.activeMic?.name ?? String(localized: "None"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -336,31 +344,31 @@ struct MicMenu: View {
     }
 }
 
-/// "Wstrzymaj" with a choice of how long; "Wznów" while paused.
+/// "Pause" with a choice of how long; "Resume" while paused.
 struct PauseButton: View {
     @ObservedObject var state: AppState
 
     var body: some View {
         if state.userPaused {
             Button(action: state.resume) {
-                Label("Wznów", systemImage: "play.fill")
+                Label("Resume", systemImage: "play.fill")
             }
         } else {
             PopupMenuButton(items: {
-                [PopupMenuItem(title: "Na 15 minut") { state.pause(for: 15 * 60) },
-                 PopupMenuItem(title: "Na godzinę") { state.pause(for: 3600) },
-                 PopupMenuItem(title: "Do wznowienia") { state.pause(for: nil) }]
+                [PopupMenuItem(title: String(localized: "For 15 minutes")) { state.pause(for: 15 * 60) },
+                 PopupMenuItem(title: String(localized: "For 1 hour")) { state.pause(for: 3600) },
+                 PopupMenuItem(title: String(localized: "Until resumed")) { state.pause(for: nil) }]
             }) {
-                Label("Wstrzymaj", systemImage: "pause.fill")
+                Label("Pause", systemImage: "pause.fill")
             }
             .fixedSize()
             .disabled(state.isRecording)
-            .help("Wstrzymaj nagrywanie w tle")
+            .help("Pause background recording")
         }
     }
 }
 
-/// Account entry in the popover footer: "Zaloguj się" or the account menu.
+/// Account entry in the popover footer: "Sign in" or the account menu.
 private struct AccountButton: View {
     @ObservedObject var state: AppState
     @ObservedObject var cloud: CloudService
@@ -369,26 +377,26 @@ private struct AccountButton: View {
         if let account = cloud.account {
             PopupMenuButton(items: {
                 [.header(account.email),
-                 PopupMenuItem(title: "Moje klipy") { cloud.openDashboard() },
-                 PopupMenuItem(title: "Ustawienia konta…") { state.openSettings(.account) },
+                 PopupMenuItem(title: String(localized: "My clips")) { cloud.openDashboard() },
+                 PopupMenuItem(title: String(localized: "Account settings…")) { state.openSettings(.account) },
                  .separator,
-                 PopupMenuItem(title: "Wyloguj") { cloud.signOut() }]
+                 PopupMenuItem(title: String(localized: "Sign out")) { cloud.signOut() }]
             }) {
                 Label(account.name.isEmpty ? account.username : account.name, systemImage: "person.crop.circle.fill")
                     .lineLimit(1)
             }
             .frame(maxWidth: 110)
-            .help("Twoje konto")
+            .help("Your account")
         } else {
             Button {
                 cloud.startLogin()
             } label: {
-                Label("Zaloguj", systemImage: "person.crop.circle.badge.plus")
+                Label("Sign in", systemImage: "person.crop.circle.badge.plus")
                     .lineLimit(1)
                     .fixedSize()
             }
             .disabled(cloud.pendingLogin != nil)
-            .help("Zaloguj się, aby udostępniać klipy linkiem")
+            .help("Sign in to share clips by link")
         }
     }
 }
@@ -400,21 +408,21 @@ struct ClipActionsMenu: View {
 
     var body: some View {
         if state.shares[url] != nil {
-            Button("Anuluj wysyłanie") { state.cancelShare(url) }
+            Button("Cancel upload") { state.cancelShare(url) }
         } else if state.cloud.link(for: url) != nil {
-            Button("Kopiuj link") { state.shareLink(url) }
-            Button("Otwórz link") { state.openLink(url) }
+            Button("Copy link") { state.shareLink(url) }
+            Button("Open link") { state.openLink(url) }
         } else {
-            Button("Udostępnij link") { state.shareLink(url) }
+            Button("Share link") { state.shareLink(url) }
         }
         Divider()
-        Button("Otwórz") { state.open(url) }
-        Button("Pokaż w Finderze") { state.reveal(url) }
-        Button("Kopiuj plik") { state.copyToPasteboard(url) }
+        Button("Open") { state.open(url) }
+        Button("Show in Finder") { state.reveal(url) }
+        Button("Copy file") { state.copyToPasteboard(url) }
         Divider()
-        Button("Przytnij…") { state.trim(url) }
+        Button("Trim…") { state.trim(url) }
         Divider()
-        Button("Przenieś do Kosza", role: .destructive) { state.delete(url) }
+        Button("Move to Trash", role: .destructive) { state.delete(url) }
     }
 }
 
@@ -461,7 +469,7 @@ private struct OnOffPill: View {
             .frame(width: 44, height: 18)
         }
         .buttonStyle(.plain)
-        .help(isOn ? "Będzie słychać w klipie" : "Nie będzie słychać w klipie")
+        .help(isOn ? String(localized: "Included in the clip") : String(localized: "Left out of the clip"))
     }
 }
 
@@ -511,9 +519,9 @@ private struct ClipRow: View {
                     Button { state.shareLink(url) } label: {
                         Image(systemName: state.cloud.link(for: url) == nil ? "link" : "doc.on.doc")
                     }
-                    .help(state.cloud.link(for: url) == nil ? "Udostępnij link" : "Kopiuj link")
+                    .help(state.cloud.link(for: url) == nil ? String(localized: "Share link") : String(localized: "Copy link"))
                     Button { state.trim(url) } label: { Image(systemName: "scissors") }
-                        .help("Przytnij")
+                        .help("Trim")
                     Menu {
                         ClipActionsMenu(url: url, state: state)
                     } label: {
@@ -538,7 +546,7 @@ private struct ClipRow: View {
         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
         .contextMenu { ClipActionsMenu(url: url, state: state) }
         .animation(snappy, value: (state.shares[url]) != nil)
-        .help("Kliknij dwa razy, aby otworzyć. Prawy klik: więcej opcji.")
+        .help("Double-click to open. Right-click for more options.")
     }
 
     private var modified: Date {
@@ -570,7 +578,7 @@ private struct ClipRow: View {
                     .frame(width: 13, height: 13)
                     .background(Circle().fill(onColor))
                     .offset(x: 4, y: 4)
-                    .help("Udostępniony linkiem")
+                    .help("Shared by link")
             }
         }
         .animation(.easeOut(duration: 0.2), value: image != nil)

@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Build deweloperski (tylko architektura tego Maca). Użycie: ./build.sh [--install]
-# Wydania publiczne (universal + DMG + notaryzacja): ./release.sh
+# Development build (this Mac's architecture only). Usage: ./build.sh [--install]
+# Public releases (universal + DMG + notarization): ./release.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,12 +8,12 @@ swift build -c release
 APP=build/ClipRecorder.app
 scripts/make-app.sh .build/release/ClipRecorder "$APP"
 
-# Stały podpis = macOS pamięta uprawnienia (ekran, mikrofon) po przebudowaniu.
-# Bez SIGN_IDENTITY używamy lokalnego certyfikatu, tworzonego jednorazowo w pęku kluczy „login”.
+# A stable signature lets macOS remember the permissions (screen, microphone) across rebuilds.
+# Without SIGN_IDENTITY we use a local certificate, created once in the "login" keychain.
 LOCAL_IDENTITY="ClipRecorder Local Signing"
 if [[ -z "${SIGN_IDENTITY:-}" ]]; then
   if ! security find-certificate -c "$LOCAL_IDENTITY" >/dev/null 2>&1; then
-    echo "→ Tworzę lokalny certyfikat „$LOCAL_IDENTITY” (jednorazowo)"
+    echo "→ Creating the local certificate \"$LOCAL_IDENTITY\" (one time)"
     TMP=$(mktemp -d)
     cat > "$TMP/cert.cfg" <<CFG
 [req]
@@ -39,12 +39,12 @@ CFG
 fi
 codesign --force --options runtime --sign "$SIGN_IDENTITY" \
   --entitlements Resources/ClipRecorder.entitlements "$APP"
-echo "✓ Zbudowano $APP"
+echo "✓ Built $APP"
 
 if [[ "${1:-}" == "--install" ]]; then
   pkill -x ClipRecorder 2>/dev/null || true
   rm -rf /Applications/ClipRecorder.app
   cp -R "$APP" /Applications/
   open /Applications/ClipRecorder.app
-  echo "✓ Zainstalowano w /Applications i uruchomiono"
+  echo "✓ Installed to /Applications and launched"
 fi

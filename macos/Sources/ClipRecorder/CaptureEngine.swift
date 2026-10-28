@@ -46,6 +46,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     private var writer: ClipWriter?
     private var clipStart: CMTime = .zero
     private var chapters: [Chapter] = []
+    private var markerCount = 0
     private var isStopping = false
     private var wantsRunning = false
     private var systemLevel: Float = 0
@@ -148,7 +149,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     /// Clean up and retry with a growing delay; only the first failure is shown.
     private func startFailed(_ error: Error, generation: Int) {
         guard generation == self.generation else { return }
-        if startFailures == 0 { report("Nie udało się uruchomić nagrywania: \(error.localizedDescription). Ponawiam…") }
+        if startFailures == 0 { report(String(localized: "Couldn’t start recording: \(error.localizedDescription). Retrying…")) }
         NSLog("ClipRecorder: start failed: \(error)")
         startFailures += 1
         let stream = self.stream
@@ -198,22 +199,23 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
                 .max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
             if let window {
                 filter = SCContentFilter(desktopIndependentWindow: window)
-                sourceName = "Okno: \(name)"
+                sourceName = String(localized: "Window: \(name)")
             } else {
                 display = content.displays.first { $0.displayID == CGMainDisplayID() } ?? content.displays.first
-                guard let display else { throw Self.error("Nie znaleziono ekranu.") }
+                guard let display else { throw Self.error(String(localized: "No display found.")) }
                 filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
-                sourceName = "\(name) nie ma okna – nagrywam ekran"
+                sourceName = String(localized: "\(name) has no window – recording the screen")
             }
         case .mainDisplay, .display:
             var wantedID = CGMainDisplayID()
             if case .display(let id) = settings.source { wantedID = id }
             display = content.displays.first { $0.displayID == wantedID }
                 ?? content.displays.first { $0.displayID == CGMainDisplayID() } ?? content.displays.first
-            guard let display else { throw Self.error("Nie znaleziono ekranu.") }
+            guard let display else { throw Self.error(String(localized: "No display found.")) }
             let excluded = ownApps + content.applications.filter { settings.excludedBundleIDs.contains($0.bundleIdentifier) }
             filter = SCContentFilter(display: display, excludingApplications: excluded, exceptingWindows: [])
-            sourceName = Self.screenName(display.displayID) ?? "Ekran \(display.width)×\(display.height)"
+            let size = "\(display.width)×\(display.height)"
+            sourceName = Self.screenName(display.displayID) ?? String(localized: "Display \(size)")
         }
 
         // Output size: native pixels, optionally scaled down to `maxHeight`.
@@ -301,7 +303,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             if self.writer != nil { self.stopClip() }
             self.teardown()
             NSLog("ClipRecorder: stream stopped: \(error.localizedDescription)")
-            self.report("Nagrywanie przerwane. Ponawiam za 3 s…")
+            self.report(String(localized: "Recording interrupted. Retrying in 3 s…"))
             self.queue.asyncAfter(deadline: .now() + 3) {
                 if self.wantsRunning { self.start() }
             }
@@ -427,11 +429,13 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     func addMarker() {
         queue.async {
             guard self.writer != nil, !self.isStopping else {
-                self.report("Znaczniki dodajesz w trakcie nagrywania klipu.")
+                self.report(String(localized: "Markers can only be added while a clip is recording."))
                 return
             }
-            let count = self.chapters.filter { $0.title.hasPrefix("Znacznik") }.count + 1
-            self.chapters.append(Chapter(time: (Self.hostNow() - self.clipStart).seconds, title: "Znacznik \(count)"))
+            self.markerCount += 1
+            let count = self.markerCount
+            let number = String(count)
+            self.chapters.append(Chapter(time: (Self.hostNow() - self.clipStart).seconds, title: String(localized: "Marker \(number)")))
             DispatchQueue.main.async { self.onMarkerAdded?(count) }
         }
     }
@@ -439,7 +443,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     @discardableResult
     private func startClip(live: Bool = true) -> Bool {
         guard let first = videoRing.first, let videoFormat = first.formatDescription else {
-            report(stream == nil ? "Nagrywanie jest wstrzymane." : "Jeszcze nic nie nagrano. Poczekaj chwilę.")
+            report(stream == nil ? String(localized: "Recording is paused.") : String(localized: "Nothing recorded yet. Wait a moment."))
             return false
         }
         let start = first.pts
@@ -449,10 +453,13 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         let micFormat = settings.includeMic ? micRing.items.last?.formatDescription : nil
         if let free = Self.freeSpace(at: clipsDirectory) {
             if free < 300_000_000 {
-                report("Za mało miejsca na dysku, żeby zapisać klip.")
+                report(String(localized: "Not enough disk space to save the clip."))
                 return false
             }
-            if free < 3_000_000_000 { report("Mało miejsca na dysku – zostało \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)).") }
+            if free < 3_000_000_000 {
+                let left = ByteCountFormatter.string(fromByteCount: free, countStyle: .file)
+                report(String(localized: "Low disk space – \(left) left."))
+            }
         }
         do {
             try FileManager.default.createDirectory(at: clipsDirectory, withIntermediateDirectories: true)
@@ -468,7 +475,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             }
             self.writer = writer
         } catch {
-            report("Nie udało się utworzyć pliku: \(error.localizedDescription)")
+            report(String(localized: "Couldn’t create the file: \(error.localizedDescription)"))
             return false
         }
 
@@ -481,8 +488,9 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
 
         let buffered = (Self.hostNow() - start).seconds
         clipStart = start
-        chapters = [Chapter(time: 0, title: "Bufor")]
-        if live { chapters.append(Chapter(time: buffered, title: "Start nagrywania")) }
+        chapters = [Chapter(time: 0, title: String(localized: "Buffer"))]
+        markerCount = 0
+        if live { chapters.append(Chapter(time: buffered, title: String(localized: "Recording started"))) }
         NSLog("ClipRecorder: clip start – video %.1f s, system %.1f s, mic %.1f s",
               videoRing.span, systemRing.span, micRing.span)
         if live { DispatchQueue.main.async { self.onRecordingStarted?(buffered) } }
@@ -507,7 +515,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
                     case .success(let url): self.onClipWritten?(url, chapters)
                     case .failure(let error):
                         self.onClipFailed?()
-                        self.onError?("Zapis klipu nie powiódł się: \(error.localizedDescription)")
+                        self.onError?(String(localized: "Saving the clip failed: \(error.localizedDescription)"))
                     }
                 }
             }
@@ -575,7 +583,7 @@ final class VideoEncoder {
             outputCallback: nil, refcon: nil, compressionSessionOut: &session)
         guard status == noErr, let session else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status),
-                          userInfo: [NSLocalizedDescriptionKey: "Nie udało się uruchomić kodowania wideo."])
+                          userInfo: [NSLocalizedDescriptionKey: String(localized: "Couldn’t start video encoding.")])
         }
         let bitrate = min(max(Double(width * height) * Double(fps) * bitsPerPixel, 3_000_000), 50_000_000)
         let props: [CFString: Any] = [

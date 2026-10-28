@@ -62,10 +62,10 @@ final class CloudService: ObservableObject {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .account: return "Jak na koncie"
-            case .public: return "Publiczne"
-            case .unlisted: return "Tylko z linkiem"
-            case .private: return "Prywatne"
+            case .account: return String(localized: "Account default")
+            case .public: return String(localized: "Public")
+            case .unlisted: return String(localized: "Unlisted")
+            case .private: return String(localized: "Private")
             }
         }
     }
@@ -189,7 +189,7 @@ final class CloudService: ObservableObject {
                 let start: DeviceStart = try await self.request("POST", "/api/device/start", json: ["deviceName": "ClipRecorder – \(device)", "platform": "macos"])
                 // Only web pages – a misbehaving server must not make us open e.g. a file:// URL.
                 guard let url = URL(string: start.verificationUrl), Self.isWebURL(url) else {
-                    throw CloudError(message: "Serwer zwrócił zły adres logowania.")
+                    throw CloudError(message: String(localized: "The server returned an invalid sign-in address."))
                 }
                 self.pendingLogin = PendingLogin(userCode: start.userCode, verificationURL: url)
                 self.openURL(url)
@@ -210,7 +210,7 @@ final class CloudService: ObservableObject {
                     case "pending":
                         continue
                     case "approved":
-                        guard let token = poll.token, let account = poll.account else { throw CloudError(message: "Niepełna odpowiedź serwera.") }
+                        guard let token = poll.token, let account = poll.account else { throw CloudError(message: String(localized: "Incomplete response from the server.")) }
                         self.storeToken(token)
                         self.setAccount(account)
                         await self.refreshAccount()  // plan + usage
@@ -218,12 +218,12 @@ final class CloudService: ObservableObject {
                         NSApp?.activate(ignoringOtherApps: true)
                         return
                     case "denied":
-                        throw CloudError(message: "Logowanie odrzucone.")
+                        throw CloudError(message: String(localized: "Sign-in was denied."))
                     default:
-                        throw CloudError(message: "Kod logowania wygasł. Spróbuj ponownie.")
+                        throw CloudError(message: String(localized: "The sign-in code expired. Try again."))
                     }
                 }
-                if !Task.isCancelled { throw CloudError(message: "Kod logowania wygasł. Spróbuj ponownie.") }
+                if !Task.isCancelled { throw CloudError(message: String(localized: "The sign-in code expired. Try again.")) }
             } catch {
                 // Cancelled (also mid-request): a newer login may already own pendingLogin.
                 guard !Task.isCancelled, !(error is CancellationError) else { return }
@@ -336,8 +336,8 @@ final class CloudService: ObservableObject {
         // One token for the whole upload, so signing out midway can't mix accounts.
         guard let token else {
             throw CloudError(message: keychainUnavailable
-                ? "Nie udało się odczytać logowania z pęku kluczy. Zezwól ClipRecorder na dostęp i spróbuj ponownie."
-                : "Zaloguj się, aby udostępniać klipy.")
+                ? String(localized: "Couldn’t read your sign-in from the keychain. Allow ClipRecorder access and try again.")
+                : String(localized: "Sign in to share clips."))
         }
         let size = (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         var body: [String: Any] = [
@@ -369,7 +369,7 @@ final class CloudService: ObservableObject {
                 try? await put("/api/clips/\(clip.id)/thumbnail", data: thumb, contentType: "image/jpeg", token: token, progress: nil)
             }
             let done: Completed = try await request("POST", "/api/clips/\(clip.id)/complete", token: token)
-            guard let url = URL(string: done.url), Self.isWebURL(url) else { throw CloudError(message: "Serwer zwrócił zły link.") }
+            guard let url = URL(string: done.url), Self.isWebURL(url) else { throw CloudError(message: String(localized: "The server returned an invalid link.")) }
             return url
         } catch {
             // Separate task: if we were cancelled, a request made here would be cancelled too.
@@ -444,14 +444,14 @@ final class CloudService: ObservableObject {
 
     private func makeRequest(_ method: String, _ path: String, token: String?) throws -> URLRequest {
         guard let base = baseURL, base.host() != nil else {
-            throw CloudError(message: "Nieprawidłowy adres serwera: \(server)")
+            throw CloudError(message: String(localized: "Invalid server address: \(server)"))
         }
         // Appended (not resolved) so a server under a sub-path (https://host/clips) keeps it.
         var request = URLRequest(url: base.appending(path: path))
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        // Server error messages come back in this language; the app's UI is Polish.
-        request.setValue("pl", forHTTPHeaderField: "Accept-Language")
+        // Server error messages come back in this language – the one the UI is shown in.
+        request.setValue(Bundle.main.preferredLocalizations.first ?? "en", forHTTPHeaderField: "Accept-Language")
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         request.setValue("ClipRecorder/\(version) (macOS)", forHTTPHeaderField: "User-Agent")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -462,7 +462,7 @@ final class CloudService: ObservableObject {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let message = (try? JSONDecoder().decode(ServerMessage.self, from: data))?.error
-                ?? (status == 0 ? "Brak połączenia z serwerem." : "Błąd serwera. Spróbuj później.")
+                ?? (status == 0 ? String(localized: "No connection to the server.") : String(localized: "Server error. Try again later."))
             throw HTTPError(status: status, message: message)
         }
     }
@@ -479,7 +479,7 @@ final class CloudService: ObservableObject {
             try check(data, response)
             return data
         } catch let error as URLError {
-            throw Self.describe(error, fallback: "Brak połączenia z serwerem.")
+            throw Self.describe(error, fallback: String(localized: "No connection to the server."))
         }
     }
 
@@ -489,12 +489,12 @@ final class CloudService: ObservableObject {
         case .cancelled:
             return CancellationError()
         case .timedOut:
-            return CloudError(message: "Serwer nie odpowiada. Spróbuj później.")
+            return CloudError(message: String(localized: "The server isn’t responding. Try again later."))
         case .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateNotYetValid,
              .serverCertificateHasUnknownRoot, .secureConnectionFailed, .appTransportSecurityRequiresSecureConnection:
-            return CloudError(message: "Nie da się bezpiecznie połączyć z serwerem. Sprawdź jego adres.")
+            return CloudError(message: String(localized: "Can’t connect to the server securely. Check its address."))
         case .cannotFindHost, .dnsLookupFailed:
-            return CloudError(message: "Nie znaleziono serwera. Sprawdź jego adres.")
+            return CloudError(message: String(localized: "Server not found. Check its address."))
         default:
             return CloudError(message: fallback)
         }
@@ -505,7 +505,7 @@ final class CloudService: ObservableObject {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
-            throw CloudError(message: "Nieoczekiwana odpowiedź serwera. Sprawdź jego adres.")
+            throw CloudError(message: String(localized: "Unexpected response from the server. Check its address."))
         }
     }
 
@@ -520,7 +520,7 @@ final class CloudService: ObservableObject {
             let (body, response) = try await session.upload(for: request, from: data, delegate: delegate)
             try check(body, response)
         } catch let error as URLError {
-            throw Self.describe(error, fallback: "Wysyłanie przerwane. Sprawdź internet.")
+            throw Self.describe(error, fallback: String(localized: "Upload interrupted. Check your internet connection."))
         }
     }
 }

@@ -14,7 +14,7 @@ enum ShareExporter {
         }
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         var audio: AVAssetTrack?
-        for track in audioTracks where await ClipFinalizer.trackName(track) == ClipFinalizer.mixName { audio = track }
+        for track in audioTracks where ClipFinalizer.isMix(await ClipFinalizer.trackName(track)) { audio = track }
         if audio == nil { audio = audioTracks.first }
 
         let natural = try await video.load(.naturalSize)

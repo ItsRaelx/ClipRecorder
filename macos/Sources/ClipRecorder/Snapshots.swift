@@ -31,7 +31,7 @@ enum Snapshots {
         state.userPaused = false
         state.includeSystemAudio = true
         state.includeMic = true
-        state.sourceName = "Wbudowany wyświetlacz Retina"
+        state.sourceName = String(localized: "Built-in Retina Display")
         state.runningAppsOverride = ["com.apple.Safari", "com.apple.MobileSMS", "com.apple.mail", "com.apple.Notes",
                                      "com.apple.Music", "com.apple.FaceTime", "com.apple.iCal", "com.apple.Passwords"]
             .compactMap { id in
@@ -42,9 +42,14 @@ enum Snapshots {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         state.excludedBundleIDs = ["com.apple.MobileSMS", "com.apple.Passwords"]
         state.levels.update(system: 0.72, mic: 0.46)
-        let fake = URL(fileURLWithPath: "/tmp/Klip 2026-10-27 o 21.06.08.mov")
-        state.recentClips = [fake, URL(fileURLWithPath: "/tmp/Klip 2026-10-27 o 20.45.13.mov"),
-                             URL(fileURLWithPath: "/tmp/Klip 2026-10-27 o 19.12.40.mov")]
+        // Sample clips named like the app names them, in the snapshot's language.
+        func clipFile(_ hour: Int, _ minute: Int, _ second: Int, in dir: URL = URL(fileURLWithPath: "/tmp")) -> URL {
+            let parts = DateComponents(year: 2026, month: 10, day: 27, hour: hour, minute: minute, second: second)
+            let date = Calendar(identifier: .gregorian).date(from: parts) ?? Date()
+            return dir.appendingPathComponent(ClipLibrary.clipName(for: date) + ".mov")
+        }
+        let fake = clipFile(21, 6, 8)
+        state.recentClips = [fake, clipFile(20, 45, 13), clipFile(19, 12, 40)]
         for (i, url) in state.recentClips.enumerated() {
             state.clipInfo.preload(url, .init(thumbnail: syntheticThumbnail(variant: i), duration: [83, 60, 214][i],
                                                size: [46_800_000, 31_200_000, 118_000_000][i],
@@ -67,20 +72,21 @@ enum Snapshots {
         state.status = .recording(since: Date().addingTimeInterval(-83))
         state.markerCount = 2
         state.now = Date()
-        state.message = "Dodano znacznik 2"
+        let marker = "2"
+        state.message = String(localized: "Marker \(marker) added")
         both("popover-recording", popover())
         state.message = nil
         snap(RecordingHUD(state: state), "hud", dark: true, dir: dir)
 
-        state.status = .paused("Wstrzymane na baterii")
+        state.status = .paused(String(localized: "Paused on battery"))
         both("popover-paused-power", popover())
 
         state.userPaused = true
-        state.status = .paused("Wstrzymane do 21:45")
+        state.status = .paused(AppState.pausedUntilReason(Calendar.current.date(bySettingHour: 21, minute: 45, second: 0, of: Date())!))
         both("popover-paused-timed", popover())
         state.userPaused = false
 
-        state.status = .failed("Zezwól na nagrywanie ekranu w Ustawieniach systemowych → Prywatność i ochrona → Nagrywanie ekranu i dźwięku systemowego.")
+        state.status = .failed(String(localized: "Allow screen recording in System Settings → Privacy & Security → Screen & System Audio Recording."))
         both("popover-permission", popover())
 
         state.status = .buffering
@@ -90,7 +96,7 @@ enum Snapshots {
         let account = CloudService.Account(id: "u1", name: "Kuba", email: "kuba@example.com", username: "kuba", defaultVisibility: "unlisted")
         let quota = #"{"plan":{"name":"Free","expiresAt":null,"maxClipBytes":500000000,"storageBytes":5000000000,"uploadsPerDay":50},"usage":{"bytes":1240000000,"uploadsToday":3}}"#
         state.cloud.preview(account: account, quotaJSON: quota)
-        state.message = "Link skopiowany."
+        state.message = String(localized: "Link copied.")
         both("popover-signed-in", popover())
         state.message = nil
 
@@ -142,11 +148,11 @@ enum Snapshots {
         }
 
         // Trim window with a generated demo clip.
-        let demo = FileManager.default.temporaryDirectory.appendingPathComponent("Klip 2026-10-27 o 21.06.08.mov")
+        let demo = clipFile(21, 6, 8, in: FileManager.default.temporaryDirectory)
         if makeDemoClip(at: demo) {
             TrimWindowController.show(demo) { _ in }
             RunLoop.main.run(until: Date().addingTimeInterval(5))  // filmstrip thumbnails load lazily
-            if let window = NSApp.windows.first(where: { $0.title.hasPrefix("Przytnij") }) {
+            if let window = NSApp.windows.first(where: { $0.contentView is AVPlayerView }) {
                 window.appearance = NSAppearance(named: .darkAqua)
                 // Video layers don't show up in cacheDisplay – the picture and the first filmstrip
                 // cell (drawn from the live layer) get the first frame as a plain image instead.
@@ -267,6 +273,8 @@ enum Snapshots {
 /// Desktop mock-up: wallpaper, menu bar with the app's icon, the open popover and a preview card.
 private struct HeroView: View {
     static let size = NSSize(width: 1280, height: 940)
+    static let finderMenus = [String(localized: "File"), String(localized: "Edit"), String(localized: "View"),
+                              String(localized: "Go"), String(localized: "Window"), String(localized: "Help")]
     let state: AppState
     let preview: ClipPreviewModel
     @Environment(\.colorScheme) private var scheme
@@ -312,7 +320,7 @@ private struct HeroView: View {
             HStack(spacing: 20) {
                 Image(systemName: "apple.logo").font(.system(size: 14))
                 Text("Finder").font(.system(size: 13, weight: .bold))
-                ForEach(["Plik", "Edycja", "Widok", "Idź", "Okno", "Pomoc"], id: \.self) { Text($0).font(.system(size: 13)) }
+                ForEach(Self.finderMenus, id: \.self) { Text($0).font(.system(size: 13)) }
             }
             .padding(.leading, 20)
             Spacer()
@@ -324,7 +332,9 @@ private struct HeroView: View {
             ForEach(["magnifyingglass", "wifi", "battery.75percent", "switch.2"], id: \.self) {
                 Image(systemName: $0).font(.system(size: 13)).frame(width: 28)
             }
-            Text(Date().formatted(.dateTime.locale(Locale(identifier: "pl_PL")).weekday(.abbreviated).day().month(.abbreviated).hour().minute())).font(.system(size: 13)).frame(width: 130, alignment: .trailing)
+            // Longer in some languages ("Wed, Oct 28 at 9:41 PM") – shrink rather than cut it off.
+            Text(Date().formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())).font(.system(size: 13))
+                .lineLimit(1).minimumScaleFactor(0.75).frame(width: 130, alignment: .trailing)
                 .padding(.trailing, 12)
         }
         .foregroundStyle(ink)
@@ -344,9 +354,9 @@ private struct MenuBarPreview: View {
 
     private func strip(dark: Bool) -> some View {
         HStack(spacing: 22) {
-            item(.idle, "bufor", dark: dark)
-            item(.recording, "nagrywanie  01:23", dark: dark)
-            item(.paused, "pauza", dark: dark)
+            item(.idle, String(localized: "buffering"), dark: dark)
+            item(.recording, String(localized: "recording") + "  01:23", dark: dark)
+            item(.paused, String(localized: "paused"), dark: dark)
         }
         .padding(.horizontal, 16)
         .frame(height: 30)

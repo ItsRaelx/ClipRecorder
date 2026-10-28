@@ -80,34 +80,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let ready = state.status == .buffering
         if state.isRecording {
-            add("Zatrzymaj i zapisz", "stop.fill") { [state] in state.toggleClip() }
-            add("Dodaj znacznik", "bookmark.fill") { [state] in state.addMarker() }
+            add(String(localized: "Stop and save"), "stop.fill") { [state] in state.toggleClip() }
+            add(String(localized: "Add marker"), "bookmark.fill") { [state] in state.addMarker() }
         } else {
-            add("Nagrywaj od \(state.bufferLabel) wstecz", "record.circle", enabled: ready) { [state] in state.toggleClip() }
-            add("Zapisz ostatnie \(state.bufferLabel)", "bolt.fill", enabled: ready) { [state] in state.saveInstantClip() }
+            add(String(localized: "Record from \(state.bufferLabel) ago"), "record.circle", enabled: ready) { [state] in state.toggleClip() }
+            add(String(localized: "Save last \(state.bufferLabel)"), "bolt.fill", enabled: ready) { [state] in state.saveInstantClip() }
         }
         menu.addItem(.separator())
         if let last = state.recentClips.first {
-            add("Otwórz ostatni klip", "play.rectangle") { [state] in state.open(last) }
+            add(String(localized: "Open last clip"), "play.rectangle") { [state] in state.open(last) }
         }
-        add("Pokaż folder z klipami", "folder") { [state] in state.openClipsFolder() }
+        add(String(localized: "Show clips folder"), "folder") { [state] in state.openClipsFolder() }
         menu.addItem(.separator())
         if state.userPaused {
-            add("Wznów nagrywanie w tle", "play.fill") { [state] in state.resume() }
+            add(String(localized: "Resume background recording"), "play.fill") { [state] in state.resume() }
         } else {
-            let pause = NSMenuItem(title: "Wstrzymaj", action: nil, keyEquivalent: "")
+            let pause = NSMenuItem(title: String(localized: "Pause"), action: nil, keyEquivalent: "")
             pause.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: nil)
             pause.isEnabled = !state.isRecording
             let sub = NSMenu()
-            for (title, duration) in [("Na 15 minut", 15.0 * 60), ("Na godzinę", 3600), ("Do wznowienia", -1)] {
+            for (title, duration) in [(String(localized: "For 15 minutes"), 15.0 * 60), (String(localized: "For 1 hour"), 3600),
+                                      (String(localized: "Until resumed"), -1)] {
                 sub.addItem(ClosureMenuItem(title: title) { [state] in state.pause(for: duration < 0 ? nil : duration) })
             }
             pause.submenu = sub
             menu.addItem(pause)
         }
-        add("Ustawienia…", "gearshape") { [weak self] in self?.showSettings() }
+        add(String(localized: "Settings…"), "gearshape") { [weak self] in self?.showSettings() }
         menu.addItem(.separator())
-        add("Zakończ ClipRecorder") { NSApp.terminate(nil) }
+        add(String(localized: "Quit ClipRecorder")) { NSApp.terminate(nil) }
 
         menu.autoenablesItems = false
         statusItem.menu = menu
@@ -173,11 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var tooltip: String {
         switch state.status {
-        case .starting: return "ClipRecorder – uruchamianie"
-        case .buffering: return "ClipRecorder – gotowy, pamięta ostatnie \(state.bufferLabel)"
-        case .recording: return "ClipRecorder – nagrywanie"
+        case .starting: return String(localized: "ClipRecorder – starting")
+        case .buffering: return String(localized: "ClipRecorder – ready, keeping the last \(state.bufferLabel)")
+        case .recording: return String(localized: "ClipRecorder – recording")
         case .paused(let reason): return "ClipRecorder – \(reason.lowercased())"
-        case .failed: return "ClipRecorder – potrzebny dostęp"
+        case .failed: return String(localized: "ClipRecorder – permission needed")
         }
     }
 

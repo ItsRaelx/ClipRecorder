@@ -15,9 +15,9 @@ struct CaptureSettings: Equatable {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .low: return "Niska"
-            case .medium: return "Średnia"
-            case .high: return "Wysoka"
+            case .low: return String(localized: "Low")
+            case .medium: return String(localized: "Medium")
+            case .high: return String(localized: "High")
             }
         }
         /// Bits per pixel per frame for HEVC.
@@ -50,7 +50,7 @@ struct CaptureSettings: Equatable {
     }
 }
 
-/// How the extra "Miks" track is built after a clip is saved.
+/// How the extra "Mix" track is built after a clip is saved.
 struct MixSettings: Equatable {
     var systemVolume: Float = 1.0
     var micVolume: Float = 1.0

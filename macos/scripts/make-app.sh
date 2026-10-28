@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Składa ClipRecorder.app z gotowej binarki.
-# Użycie: scripts/make-app.sh <binarka> <ścieżka.app> [wersja] [numer-buildu]
+# Assembles ClipRecorder.app from a built binary.
+# Usage: scripts/make-app.sh <binary> <path.app> [version] [build-number]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -13,6 +13,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/ClipRecorder"
 cp Resources/Info.plist "$APP/Contents/"
+# Translations (en = base, pl, …)
+for lproj in Resources/*.lproj; do cp -R "$lproj" "$APP/Contents/Resources/"; done
 if [[ -n "$VERSION" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 fi
@@ -20,7 +22,7 @@ if [[ -n "$BUILD" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
 fi
 
-# Ikona: Resources/AppIcon-1024.png → AppIcon.icns (źródło: Tools/make-icon.swift)
+# Icon: Resources/AppIcon-1024.png → AppIcon.icns (source: Tools/make-icon.swift)
 ICONSET=$(mktemp -d)/AppIcon.iconset
 mkdir -p "$ICONSET"
 for s in 16 32 128 256 512; do

@@ -1,12 +1,17 @@
 import AVFoundation
 
 /// Rewrites a clip in place (video and original audio are copied without re-encoding):
-/// - adds a "Miks" track (system + mic, with per-track volume and a limiter) as the
+/// - adds a "Mix" track (system + mic, with per-track volume and a limiter) as the
 ///   first, default audio track, so single-track players hear everything,
 /// - writes chapters (buffer start, recording start, markers),
 /// - optionally trims to a time range.
 enum ClipFinalizer {
-    static let mixName = "Miks (system + mikrofon)"
+    /// Name of the mix track written into new clips (in the app's language).
+    static let mixName = String(localized: "Mix (system + microphone)")
+    /// Every name the mix track may have – clips made in another language keep theirs.
+    static let mixNames: Set<String> = [mixName, "Miks (system + mikrofon)", "Mix (system + microphone)"]
+
+    static func isMix(_ name: String?) -> Bool { name.map(mixNames.contains) ?? false }
 
     struct Options {
         /// Build a mix track if the clip has ≥ 2 audio tracks and no mix yet.
@@ -24,8 +29,8 @@ enum ClipFinalizer {
         for track in try await asset.loadTracks(withMediaType: .audio) {
             audioTracks.append((track, await trackName(track)))
         }
-        let existingMix = audioTracks.first { $0.name == mixName }
-        let sources = audioTracks.filter { $0.name != mixName }
+        let existingMix = audioTracks.first { isMix($0.name) }
+        let sources = audioTracks.filter { !isMix($0.name) }
 
         let range = options.timeRange ?? CMTimeRange(start: .zero, duration: duration)
         let chapters: [Chapter]
@@ -53,11 +58,15 @@ enum ClipFinalizer {
         }
 
         var videoInput: AVAssetWriterInput?
-        for track in videoTracks { videoInput = try await passthrough(track, name: "Ekran") }
+        for track in videoTracks {
+            // A re-run (trim) keeps the name the clip was made with.
+            let name = await trackName(track) ?? String(localized: "Screen")
+            videoInput = try await passthrough(track, name: name)
+        }
 
         var audioInputs: [AVAssetWriterInput] = []
         if let existingMix {
-            audioInputs.append(try await passthrough(existingMix.track, name: mixName))
+            audioInputs.append(try await passthrough(existingMix.track, name: existingMix.name ?? mixName))
         } else if let mix = options.mix, sources.count >= 2 {
             audioInputs.append(addMix(of: sources.map(\.track), settings: mix, reader: reader, writer: writer, pumps: &pumps))
         }
@@ -205,7 +214,7 @@ enum ClipFinalizer {
             kept.removeFirst(lastBefore)
             kept[0].time = start
         } else if kept.isEmpty || kept[0].time > start {
-            kept.insert(Chapter(time: start, title: "Początek"), at: 0)
+            kept.insert(Chapter(time: start, title: String(localized: "Start")), at: 0)
         }
 
         var samples: [CMSampleBuffer] = []
@@ -281,7 +290,7 @@ enum ClipFinalizer {
         var result: [Chapter] = []
         for group in groups {
             let text = (try? await group.items.first?.load(.stringValue)) ?? nil
-            result.append(Chapter(time: group.timeRange.start.seconds, title: text ?? "Rozdział"))
+            result.append(Chapter(time: group.timeRange.start.seconds, title: text ?? String(localized: "Chapter")))
         }
         return result
     }

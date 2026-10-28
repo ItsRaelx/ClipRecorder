@@ -24,7 +24,7 @@ struct LevelMeter: View {
         }
         .frame(height: height, alignment: .bottom)
         .animation(.easeOut(duration: 0.12), value: level)
-        .accessibilityLabel("Poziom dźwięku")
+        .accessibilityLabel("Audio level")
     }
 
     private func color(_ i: Int) -> Color {
@@ -151,10 +151,14 @@ struct Toast: View {
     let text: String
 
     private var kind: Kind {
+        // Messages are plain localized text – recognise them by wording (English and Polish).
         let t = text.lowercased()
-        if t.contains("nie powiódł") || t.contains("nie udało") || t.contains("przerwane") || t.contains("brak") { return .error }
-        if t.hasPrefix("zapisano") || t.hasPrefix("przycięto") || t.hasPrefix("przeniesiono")
-            || t.hasPrefix("link skopiowany") || t.hasPrefix("zalogowano") { return .success }
+        let errors = ["failed", "couldn’t", "interrupted", "no space", "no connection", "not enough",
+                      "nie powiódł", "nie powiodło", "nie udało", "przerwane", "brak", "za mało"]
+        let successes = ["saved:", "trimmed", "moved to trash", "link copied", "signed in as",
+                         "zapisano", "przycięto", "przeniesiono", "link skopiowany", "zalogowano"]
+        if errors.contains(where: t.contains) { return .error }
+        if successes.contains(where: t.hasPrefix) { return .success }
         return .info
     }
 

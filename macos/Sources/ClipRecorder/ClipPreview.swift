@@ -141,13 +141,13 @@ struct ClipPreviewView: View {
                             .scaleEffect(model.appeared ? 1 : 0.3)
                             .opacity(model.appeared ? 1 : 0)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Klip zapisany").font(.system(size: 13, weight: .semibold))
+                            Text("Clip saved").font(.system(size: 13, weight: .semibold))
                             Text(subtitle).font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
                     if let progress = state.shares[url] {
-                        ProgressRow(title: "Wysyłanie…", progress: progress,
+                        ProgressRow(title: String(localized: "Uploading…"), progress: progress,
                                     cancel: { state.cancelShare(url) })
                             .transition(.opacity)
                     } else {
@@ -248,14 +248,14 @@ struct ClipPreviewView: View {
         .onHover { h in withAnimation(snappy) { hoverThumb.value = h } }
         .onTapGesture { state.open(url) }
         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
-        .help("Kliknij, aby obejrzeć. Możesz też przeciągnąć klip, gdzie chcesz.")
+        .help("Click to watch. You can also drag the clip anywhere.")
     }
 
     private func actions(_ url: URL) -> some View {
         let shared = state.cloud.link(for: url) != nil
         return HStack(spacing: 6) {
             Button { state.shareLink(url) } label: {
-                Label(shared ? "Kopiuj link" : "Udostępnij link", systemImage: shared ? "doc.on.doc" : "link")
+                Label(shared ? String(localized: "Copy link") : String(localized: "Share link"), systemImage: shared ? "doc.on.doc" : "link")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
                     .contentTransition(.symbolEffect(.replace))
@@ -264,10 +264,10 @@ struct ClipPreviewView: View {
                     .contentShape(Capsule())
             }
             .buttonStyle(PressableStyle())
-            .help(shared ? "Skopiuj link do schowka" : "Wyślij klip i skopiuj link")
-            IconButton(icon: "scissors", help: "Przytnij") { state.trim(url) }
-            IconButton(icon: "folder", help: "Pokaż w Finderze") { state.reveal(url) }
-            IconButton(icon: "trash", help: "Przenieś do Kosza", tint: accent) {
+            .help(shared ? String(localized: "Copy the link to the clipboard") : String(localized: "Upload the clip and copy the link"))
+            IconButton(icon: "scissors", help: String(localized: "Trim")) { state.trim(url) }
+            IconButton(icon: "folder", help: String(localized: "Show in Finder")) { state.reveal(url) }
+            IconButton(icon: "trash", help: String(localized: "Move to Trash"), tint: accent) {
                 state.delete(url)
                 model.onClose?()
             }
@@ -291,7 +291,7 @@ private struct ProgressRow: View {
                     Button(action: cancel) { Image(systemName: "xmark.circle.fill").font(.system(size: 12)) }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
-                        .help("Anuluj wysyłanie")
+                        .help("Cancel upload")
                 }
             }
             ProgressView(value: progress).tint(accent)
@@ -320,7 +320,7 @@ struct LinkRow: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(onColor)
-            .help("Otwórz w przeglądarce")
+            .help("Open in browser")
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity)
@@ -334,7 +334,7 @@ struct LinkRow: View {
         .contentShape(RoundedRectangle(cornerRadius: 13, style: .circular))
         .onTapGesture(perform: copy)
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover.value = h } }
-        .help("Kliknij, aby skopiować link")
+        .help("Click to copy the link")
     }
 }
 
@@ -348,15 +348,15 @@ struct LoginWaitingRow: View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Dokończ logowanie w przeglądarce").font(.caption.weight(.semibold))
-                Text("Kod: \(code)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                Text("Finish signing in in your browser").font(.caption.weight(.semibold))
+                Text("Code: \(code)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            Button("Otwórz", action: reopen).buttonStyle(.link).font(.caption)
+            Button("Open", action: reopen).buttonStyle(.link).font(.caption)
             Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Anuluj logowanie")
+                .help("Cancel sign-in")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -432,7 +432,8 @@ final class TrimWindowController: NSObject, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 600),
                           styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         super.init()
-        window.title = "Przytnij – \(url.deletingPathExtension().lastPathComponent)"
+        let name = url.deletingPathExtension().lastPathComponent
+        window.title = String(localized: "Trim – \(name)")
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = playerView

@@ -1,25 +1,25 @@
 #!/bin/zsh
-# Buduje wydanie: universal (Apple Silicon + Intel) ClipRecorder.app spakowany w DMG.
+# Builds a release: a universal (Apple Silicon + Intel) ClipRecorder.app packed in a DMG.
 #
-# Użycie: ./release.sh [wersja]          (domyślnie: ostatni tag git bez „v”)
+# Usage: ./release.sh [version]          (default: the latest v* git tag without the "v")
 #
-# Bez zmiennych poniżej powstaje wydanie testowe podpisane ad-hoc
-# (macOS pokaże ostrzeżenie „nie można zweryfikować twórcy”).
+# Without the variables below you get an ad-hoc signed test release
+# (macOS warns that the developer cannot be verified).
 #
-# Podpis Developer ID (wymaga konta Apple Developer, 99 $/rok):
-#   DEVELOPER_ID="Developer ID Application: Imię Nazwisko (TEAMID)"
+# Developer ID signature (requires an Apple Developer account, $99/year):
+#   DEVELOPER_ID="Developer ID Application: Jane Doe (TEAMID)"
 #
-# Notaryzacja – jedno z dwóch:
-#   NOTARY_PROFILE=nazwa          profil z `xcrun notarytool store-credentials`
-#   NOTARY_KEY_PATH=AuthKey.p8    klucz API App Store Connect
+# Notarization – one of:
+#   NOTARY_PROFILE=name           profile from `xcrun notarytool store-credentials`
+#   NOTARY_KEY_PATH=AuthKey.p8    App Store Connect API key
 #   NOTARY_KEY_ID=ABC123XYZ
 #   NOTARY_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 #
-# Szczegóły: RELEASING.md
+# Details: RELEASING.md
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=${1:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)}
+VERSION=${1:-$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' || true)}  # skips windows-v* tags
 VERSION=${VERSION:-$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)}
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 DIST=dist
@@ -30,18 +30,18 @@ echo "→ ClipRecorder $VERSION (build $BUILD)"
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
-echo "→ Kompilacja (arm64 + x86_64)"
+echo "→ Compiling (arm64 + x86_64)"
 swift build -c release --arch arm64 --arch x86_64
 BIN_DIR=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
 scripts/make-app.sh "$BIN_DIR/ClipRecorder" "$APP" "$VERSION" "$BUILD"
 lipo -info "$APP/Contents/MacOS/ClipRecorder"
 
 if [[ -n "${DEVELOPER_ID:-}" ]]; then
-  echo "→ Podpis: $DEVELOPER_ID"
+  echo "→ Signing: $DEVELOPER_ID"
   codesign --force --options runtime --timestamp \
     --entitlements Resources/ClipRecorder.entitlements --sign "$DEVELOPER_ID" "$APP"
 else
-  echo "⚠︎ Brak DEVELOPER_ID – podpis ad-hoc (wydanie testowe)"
+  echo "⚠︎ No DEVELOPER_ID – ad-hoc signature (test release)"
   codesign --force --options runtime \
     --entitlements Resources/ClipRecorder.entitlements --sign - "$APP"
 fi
@@ -65,14 +65,14 @@ if [[ -n "${DEVELOPER_ID:-}" ]]; then
   fi
 
   if (( ${#NOTARY_ARGS} )); then
-    echo "→ Notaryzacja (może potrwać kilka minut)"
+    echo "→ Notarizing (may take a few minutes)"
     xcrun notarytool submit "$DMG" "${NOTARY_ARGS[@]}" --wait
     xcrun stapler staple "$DMG"
     spctl --assess --type open --context context:primary-signature -v "$DMG"
   else
-    echo "⚠︎ Brak danych do notaryzacji – DMG jest podpisany, ale nie notaryzowany"
+    echo "⚠︎ No notarization credentials – the DMG is signed but not notarized"
   fi
 fi
 
 (cd "$DIST" && shasum -a 256 "${DMG:t}" | tee "${DMG:t}.sha256")
-echo "✓ Gotowe: $DMG"
+echo "✓ Done: $DMG"

@@ -1,0 +1,5 @@
+/* English is the base language: strings in the code are the English text.
+   Only keys that differ from their English text are listed here. */
+
+"track.system-audio" = "System audio";
+"settings.sign-in" = "Sign in";

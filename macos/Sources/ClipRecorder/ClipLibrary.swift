@@ -5,10 +5,23 @@ enum ClipLibrary {
     static let defaultDirectory = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Clips", isDirectory: true)
 
-    static func newClipURL(in directory: URL) -> URL {
+    /// Name prefixes of clips made by this app – Polish builds wrote "Klip …", so both
+    /// are recognised whatever the current language.
+    static let namePrefixes = ["Clip ", "Klip "]
+
+    /// "Clip 2026-10-27 at 21.06.08" (localized prefix and joiner, fixed digits).
+    static func clipName(for date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd 'o' HH.mm.ss"
-        let name = "Klip \(formatter.string(from: Date()))"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let day = formatter.string(from: date)
+        formatter.dateFormat = "HH.mm.ss"
+        let time = formatter.string(from: date)
+        return String(localized: "Clip \(day) at \(time)")
+    }
+
+    static func newClipURL(in directory: URL) -> URL {
+        let name = clipName(for: Date())
         // Two clips within the same second (double-tapped hotkey) must not collide.
         var url = directory.appendingPathComponent("\(name).mov")
         var n = 2
@@ -30,7 +43,10 @@ enum ClipLibrary {
         let keys: [URLResourceKey] = [.creationDateKey, .fileSizeKey]
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys)) ?? []
         return files
-            .filter { $0.lastPathComponent.hasPrefix("Klip ") && ["mov", "mp4"].contains($0.pathExtension.lowercased()) }
+            .filter { url in
+                namePrefixes.contains { url.lastPathComponent.hasPrefix($0) }
+                    && ["mov", "mp4"].contains(url.pathExtension.lowercased())
+            }
             .map { url in
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 return Entry(url: url, created: values?.creationDate ?? .distantPast, size: values?.fileSize ?? 0)
