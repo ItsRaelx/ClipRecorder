@@ -1,0 +1,14 @@
+# Kategorie w automatycznych notatkach do wydań (gh release create --generate-notes).
+changelog:
+  exclude:
+    labels: ["ignore-for-release"]
+    authors: ["dependabot"]
+  categories:
+    - title: ✨ Nowe funkcje
+      labels: ["enhancement"]
+    - title: 🐞 Poprawki
+      labels: ["bug"]
+    - title: 📖 Dokumentacja
+      labels: ["documentation"]
+    - title: Pozostałe zmiany
+      labels: ["*"]

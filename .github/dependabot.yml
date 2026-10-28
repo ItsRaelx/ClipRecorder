@@ -1,0 +1,8 @@
+# Aktualizacje akcji GitHuba (aplikacja na macOS nie ma zewnętrznych zależności).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ["ignore-for-release"]

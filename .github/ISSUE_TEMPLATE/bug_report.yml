@@ -1,0 +1,90 @@
+name: 🐞 Zgłoś błąd
+description: Coś nie działa tak, jak powinno.
+title: "[Błąd] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Dzięki za zgłoszenie! Zanim je wyślesz, zajrzyj do
+        [rozwiązywania problemów](https://github.com/ItsRaelx/ClipRecorder/blob/main/docs/macos/problemy.md)
+        i [istniejących zgłoszeń](https://github.com/ItsRaelx/ClipRecorder/issues?q=is%3Aissue).
+
+        **Luki bezpieczeństwa zgłaszaj prywatnie** – zobacz [SECURITY.md](https://github.com/ItsRaelx/ClipRecorder/blob/main/SECURITY.md).
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platforma
+      options:
+        - macOS
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: Wersja ClipRecordera
+      description: Ustawienia → lewy dolny róg okna.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: System i komputer
+      placeholder: "macOS 15.3, MacBook Air M2"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Czego dotyczy
+      multiple: true
+      options:
+        - Nagrywanie obrazu
+        - Dźwięk (komputer / mikrofon)
+        - Skróty klawiszowe
+        - Podgląd po zapisie / przycinanie
+        - Udostępnianie linkiem (clip.secc.me)
+        - Ustawienia
+        - Wstrzymywanie / bateria / blokada ekranu
+        - Automatyzacja (cliprecorder://)
+        - Instalacja / uprawnienia / aktualizacje
+        - Inne
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Co się stało?
+      description: Opisz problem. Zrzut ekranu albo krótkie nagranie bardzo pomaga.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Jak to powtórzyć?
+      placeholder: |
+        1. Ustaw bufor na 5 min
+        2. Naciśnij ⌃⌥S
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Czego się spodziewałeś?
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        Na macOS uruchom w Terminalu poniższe polecenie, powtórz problem i wklej wynik:
+        `log stream --predicate 'process == "ClipRecorder"' --level info`
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sprawdziłem, że
+      options:
+        - label: używam najnowszej wersji aplikacji
+        - label: podobnego zgłoszenia jeszcze nie ma
+          required: true

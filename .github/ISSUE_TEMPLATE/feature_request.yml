@@ -1,0 +1,40 @@
+name: 💡 Pomysł na funkcję
+description: Zaproponuj nową funkcję albo usprawnienie.
+title: "[Pomysł] "
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platforma
+      options:
+        - macOS
+        - Windows
+        - Obie
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Jaki problem to rozwiąże?
+      description: Opisz sytuację, w której tego brakuje, np. „Gdy gram w …, chciałbym …”.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Jak by to mogło działać?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Rozważane alternatywy
+      description: Inne rozwiązania albo aplikacje, które robią to dobrze.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Sprawdziłem, że
+      options:
+        - label: podobnego pomysłu nie ma w zgłoszeniach ani w Dyskusjach
+          required: true
