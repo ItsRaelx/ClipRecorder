@@ -83,7 +83,7 @@ enum ClipFinalizer {
         await withTaskGroup(of: Void.self) { tasks in
             for pump in pumps {
                 nonisolated(unsafe) let pump = pump
-                tasks.addTask { await run(pump.next, into: pump.input) }
+                tasks.addTask { await run(pump.next, into: pump.input, writer: writer) }
             }
         }
 
@@ -91,6 +91,10 @@ enum ClipFinalizer {
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: tmp)
             throw reader.error ?? CocoaError(.fileReadUnknown)
+        }
+        guard writer.status == .writing else {  // e.g. disk full while remuxing
+            try? FileManager.default.removeItem(at: tmp)
+            throw writer.error ?? CocoaError(.fileWriteUnknown)
         }
         if options.timeRange != nil { writer.endSession(atSourceTime: range.end) }
         await writer.finishWriting()
@@ -297,22 +301,35 @@ enum ClipFinalizer {
         return item
     }
 
-    static func run(_ next: @escaping () -> CMSampleBuffer?, into input: AVAssetWriterInput) async {
+    static func run(_ next: @escaping () -> CMSampleBuffer?, into input: AVAssetWriterInput,
+                    writer: AVAssetWriter) async {
         let queue = DispatchQueue(label: "ClipRecorder.remux.pump")
         nonisolated(unsafe) let input = input
         nonisolated(unsafe) let next = next
+        nonisolated(unsafe) let writer = writer
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             var finished = false
-            input.requestMediaDataWhenReady(on: queue) {
+            func finish() {
                 guard !finished else { return }
-                while input.isReadyForMoreMediaData {
+                finished = true
+                if writer.status == .writing { input.markAsFinished() }
+                done.resume()
+            }
+            input.requestMediaDataWhenReady(on: queue) {
+                while !finished, input.isReadyForMoreMediaData {
                     if let sample = next(), input.append(sample) { continue }
-                    finished = true
-                    input.markAsFinished()
-                    done.resume()
-                    return
+                    finish()
                 }
             }
+            // If the writer fails or is cancelled, the other inputs never get another
+            // callback – check now and then so the pump can't hang forever.
+            let watchdog = DispatchSource.makeTimerSource(queue: queue)
+            watchdog.schedule(deadline: .now() + 0.5, repeating: 0.5)
+            watchdog.setEventHandler {
+                if finished { watchdog.cancel(); return }
+                if writer.status != .writing { finish(); watchdog.cancel() }
+            }
+            watchdog.resume()
         }
     }
 }

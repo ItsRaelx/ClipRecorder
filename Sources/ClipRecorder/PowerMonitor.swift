@@ -5,7 +5,17 @@ import IOKit.ps
 final class PowerMonitor {
     static let shared = PowerMonitor()
 
+    /// Fires only when "on battery" or Low Power Mode actually changes – IOKit also
+    /// notifies on every battery percentage tick.
     var onChange: (() -> Void)?
+    private var lastState: (battery: Bool, lowPower: Bool)?
+
+    private func notifyIfChanged() {
+        let state = (battery: isOnBattery, lowPower: isLowPowerMode)
+        if let lastState, lastState == state { return }
+        lastState = state
+        onChange?()
+    }
 
     var isOnBattery: Bool {
         guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
@@ -20,12 +30,13 @@ final class PowerMonitor {
         if let source = IOPSNotificationCreateRunLoopSource({ context in
             guard let context else { return }
             let monitor = Unmanaged<PowerMonitor>.fromOpaque(context).takeUnretainedValue()
-            DispatchQueue.main.async { monitor.onChange?() }
+            DispatchQueue.main.async { monitor.notifyIfChanged() }
         }, context)?.takeRetainedValue() {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
         }
         NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
-            self?.onChange?()
+            self?.notifyIfChanged()
         }
+        lastState = (isOnBattery, isLowPowerMode)
     }
 }

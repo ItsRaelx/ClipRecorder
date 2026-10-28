@@ -20,6 +20,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     var onMarkerAdded: ((_ count: Int) -> Void)?
     /// Called once the clip is fully written, with the chapters to add during finalizing.
     var onClipWritten: ((_ url: URL, _ chapters: [Chapter]) -> Void)?
+    /// Called instead of `onClipWritten` when the clip couldn't be written.
+    var onClipFailed: (() -> Void)?
     var onError: ((String) -> Void)?
     /// Audio levels 0…1 (system, mic), ~15× per second.
     var onLevels: ((_ system: Float, _ mic: Float) -> Void)?
@@ -50,9 +52,13 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     private var micLevel: Float = 0
     private var lastLevelReport = CMTime.zero
     private var generation = 0
+    private var startFailures = 0
 
     private static let diskBufferDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("ClipRecorder/Buffer", isDirectory: true)
+    /// Leftovers from an earlier run (crash) are removed once per launch. Each stream
+    /// then gets its own folder, so a restart can't delete chunks a clip is still reading.
+    private static let wipeOldBuffers: Void = { try? FileManager.default.removeItem(at: diskBufferDirectory) }()
 
     // MARK: Settings
 
@@ -89,10 +95,26 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         }
     }
 
+    /// Re-reads the running apps (an excluded app may have been launched since the
+    /// stream started) and updates what's hidden.
     private func applyFilter() {
-        guard let stream, let display = displayForFilter else { return }
-        stream.updateContentFilter(makeDisplayFilter(display)) { error in
-            if let error { NSLog("ClipRecorder: updateContentFilter failed: \(error)") }
+        guard stream != nil, displayForFilter != nil else { return }
+        Task {
+            nonisolated(unsafe) let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+            self.queue.async {
+                guard let stream = self.stream, let display = self.displayForFilter else { return }
+                if let content { self.allApps = content.applications }
+                stream.updateContentFilter(self.makeDisplayFilter(display)) { error in
+                    if let error { NSLog("ClipRecorder: updateContentFilter failed: \(error)") }
+                }
+            }
+        }
+    }
+
+    /// Called when an app is launched – re-applies the filter if it should be hidden.
+    func appLaunched(bundleID: String) {
+        queue.async {
+            if self.settings.excludedBundleIDs.contains(bundleID) { self.applyFilter() }
         }
     }
 
@@ -114,10 +136,27 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             Task {
                 do {
                     try await self.startStream(settings: settings, generation: generation)
+                    self.queue.async { self.startFailures = 0 }
                 } catch {
-                    self.report("Nie udało się uruchomić nagrywania: \(error.localizedDescription)")
+                    self.queue.async { self.startFailed(error, generation: generation) }
                 }
             }
+        }
+    }
+
+    /// Start can fail transiently (screen asleep or locked, display not ready at login).
+    /// Clean up and retry with a growing delay; only the first failure is shown.
+    private func startFailed(_ error: Error, generation: Int) {
+        guard generation == self.generation else { return }
+        if startFailures == 0 { report("Nie udało się uruchomić nagrywania: \(error.localizedDescription). Ponawiam…") }
+        NSLog("ClipRecorder: start failed: \(error)")
+        startFailures += 1
+        let stream = self.stream
+        if stream != nil { teardown() }
+        stream?.stopCapture { _ in }
+        let delay = min(3 * pow(2, Double(min(startFailures - 1, 5))), 60)
+        queue.asyncAfter(deadline: .now() + delay) {
+            if self.wantsRunning, generation == self.generation, self.stream == nil { self.start() }
         }
     }
 
@@ -209,6 +248,16 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             nonisolated(unsafe) let sample = sample
             self.queue.async { self.handleEncodedVideo(sample) }
         }
+        // The hardware session can die (sleep, GPU reset) – start over instead of
+        // silently recording audio with a frozen picture.
+        encoder.onInvalid = { [weak self] in
+            guard let self else { return }
+            self.queue.async {
+                guard self.stream != nil, generation == self.generation else { return }
+                NSLog("ClipRecorder: video encoder session invalid – restarting")
+                self.restart()
+            }
+        }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
@@ -218,10 +267,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         let proceed: Bool = queue.sync {
             // A newer start/stop request superseded this one.
             guard generation == self.generation, self.wantsRunning, self.stream == nil else { return false }
-            let disk = settings.buffersOnDisk ? Self.diskBufferDirectory : nil
-            if disk != nil {
-                try? FileManager.default.removeItem(at: Self.diskBufferDirectory)  // leftovers from a crash
-            }
+            Self.wipeOldBuffers
+            let disk = settings.buffersOnDisk ? Self.diskBufferDirectory.appendingPathComponent(UUID().uuidString) : nil
             self.videoRing = SampleRing(diskDirectory: disk?.appendingPathComponent("video"))
             self.systemRing = SampleRing(diskDirectory: disk?.appendingPathComponent("system"))
             self.micRing = SampleRing(diskDirectory: disk?.appendingPathComponent("mic"))
@@ -237,6 +284,15 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         guard proceed else { encoder.invalidate(); return }
         try await stream.startCapture()
         DispatchQueue.main.async { self.onCaptureRunning?(sourceName) }
+        nonisolated(unsafe) let startedStream = stream
+        // Settings that changed while starting (e.g. a mic plugged in) were stored
+        // but not applied – apply them now against what the stream really uses.
+        queue.async {
+            guard self.stream === startedStream, self.settings != settings else { return }
+            let current = self.settings
+            self.settings = settings
+            self.apply(current)
+        }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -244,7 +300,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             guard stream === self.stream else { return }
             if self.writer != nil { self.stopClip() }
             self.teardown()
-            self.report("Przechwytywanie przerwane: \(error.localizedDescription). Ponawiam za 3 s…")
+            NSLog("ClipRecorder: stream stopped: \(error.localizedDescription)")
+            self.report("Nagrywanie przerwane. Ponawiam za 3 s…")
             self.queue.asyncAfter(deadline: .now() + 3) {
                 if self.wantsRunning { self.start() }
             }
@@ -277,7 +334,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
                   SCFrameStatus(rawValue: rawStatus) == .complete,
                   let pixelBuffer = sb.imageBuffer else { return }
             lastPixelBuffer = pixelBuffer
-            encode(pixelBuffer, at: sb.presentationTimeStamp)
+            encode(pixelBuffer, at: sb.presentationTimeStamp, isRealFrame: true)
         case .audio:
             handleAudio(sb, track: .system)
         case .microphone:
@@ -287,8 +344,15 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         }
     }
 
-    private func encode(_ pixelBuffer: CVPixelBuffer, at pts: CMTime) {
-        if lastEncodedPTS.isValid && pts <= lastEncodedPTS { return }
+    private func encode(_ pixelBuffer: CVPixelBuffer, at pts: CMTime, isRealFrame: Bool = false) {
+        var pts = pts
+        if lastEncodedPTS.isValid && pts <= lastEncodedPTS {
+            // A new picture captured just before a repeated frame was encoded: show it
+            // right after instead of dropping it (a single change would appear late).
+            guard isRealFrame else { return }
+            // One frame later, so the clip keeps a regular frame rate.
+            pts = lastEncodedPTS + CMTime(value: 1, timescale: Int32(max(settings.fps, 1)))
+        }
         lastEncodedPTS = pts
         encoder?.encode(pixelBuffer, pts: pts)
     }
@@ -310,9 +374,12 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     }
 
     private func handleEncodedVideo(_ sb: CMSampleBuffer) {
-        guard encoder != nil else { return }
-        videoRing.append(sb, isKeyframe: sb.isKeyframe)
-        videoRing.trim(olderThan: sb.presentationTimeStamp.seconds - Double(settings.bufferSeconds), keyframeAligned: true)
+        // After a teardown the buffer is gone, but frames flushed for a clip that's
+        // being stopped (pause, restart) still belong to that clip.
+        if encoder != nil {
+            videoRing.append(sb, isKeyframe: sb.isKeyframe)
+            videoRing.trim(olderThan: sb.presentationTimeStamp.seconds - Double(settings.bufferSeconds), keyframeAligned: true)
+        }
         writer?.append(sb, to: .video)
     }
 
@@ -372,7 +439,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     @discardableResult
     private func startClip(live: Bool = true) -> Bool {
         guard let first = videoRing.first, let videoFormat = first.formatDescription else {
-            report(stream == nil ? "Nagrywanie jest wstrzymane." : "Bufor jest jeszcze pusty – poczekaj chwilę po uruchomieniu.")
+            report(stream == nil ? "Nagrywanie jest wstrzymane." : "Jeszcze nic nie nagrano. Poczekaj chwilę.")
             return false
         }
         let start = first.pts
@@ -380,10 +447,26 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
 
         let systemFormat = settings.includeSystemAudio ? systemRing.items.last?.formatDescription : nil
         let micFormat = settings.includeMic ? micRing.items.last?.formatDescription : nil
+        if let free = Self.freeSpace(at: clipsDirectory) {
+            if free < 300_000_000 {
+                report("Za mało miejsca na dysku, żeby zapisać klip.")
+                return false
+            }
+            if free < 3_000_000_000 { report("Mało miejsca na dysku – zostało \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)).") }
+        }
         do {
             try FileManager.default.createDirectory(at: clipsDirectory, withIntermediateDirectories: true)
-            writer = try ClipWriter(url: url, videoFormat: videoFormat, systemFormat: systemFormat,
-                                    micFormat: micFormat, startTime: start)
+            let writer = try ClipWriter(url: url, videoFormat: videoFormat, systemFormat: systemFormat,
+                                        micFormat: micFormat, startTime: start)
+            writer.onFailure = { [weak self, weak writer] error in
+                guard let self else { return }
+                self.queue.async {
+                    guard let writer, self.writer === writer else { return }
+                    NSLog("ClipRecorder: writer failed: \(error)")
+                    self.stopClip()  // finish reports the error (e.g. disk full)
+                }
+            }
+            self.writer = writer
         } catch {
             report("Nie udało się utworzyć pliku: \(error.localizedDescription)")
             return false
@@ -407,7 +490,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     }
 
     private func stopClip() {
-        guard let writer else { return }
+        // Can be requested twice (hotkey + pause, stream error during a stop…).
+        guard let writer, !isStopping else { return }
         isStopping = true
         // Encode one last frame "now" so the video doesn't end before the audio.
         if let pb = lastPixelBuffer { encode(pb, at: Self.hostNow()) }
@@ -421,11 +505,29 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let url): self.onClipWritten?(url, chapters)
-                    case .failure(let error): self.onError?("Zapis klipu nie powiódł się: \(error.localizedDescription)")
+                    case .failure(let error):
+                        self.onClipFailed?()
+                        self.onError?("Zapis klipu nie powiódł się: \(error.localizedDescription)")
                     }
                 }
             }
         }
+    }
+
+    /// True while a clip is being written (live recording or the stop in progress).
+    func whenIdle(_ done: @escaping () -> Void) {
+        queue.async {
+            if self.writer == nil && !self.isStopping { DispatchQueue.main.async(execute: done); return }
+            self.queue.asyncAfter(deadline: .now() + 0.2) { self.whenIdle(done) }
+        }
+    }
+
+    private static func freeSpace(at url: URL) -> Int64? {
+        // The "important usage" figure is 0 on exFAT/HFS+ drives – fall back to the
+        // plain number there, and treat "still nothing" as unknown.
+        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+        let free = max(values?.volumeAvailableCapacityForImportantUsage ?? 0, Int64(values?.volumeAvailableCapacity ?? 0))
+        return free > 0 ? free : nil
     }
 
     private func report(_ message: String) {
@@ -458,6 +560,9 @@ extension CMSampleBuffer {
 final class VideoEncoder {
     private var session: VTCompressionSession?
     private let output: (CMSampleBuffer) -> Void
+    /// Called when the session stops working (e.g. invalidated after sleep).
+    var onInvalid: (() -> Void)?
+    private var reportedInvalid = false
 
     init(width: Int, height: Int, fps: Int32, bitsPerPixel: Double, output: @escaping (CMSampleBuffer) -> Void) throws {
         self.output = output
@@ -470,7 +575,7 @@ final class VideoEncoder {
             outputCallback: nil, refcon: nil, compressionSessionOut: &session)
         guard status == noErr, let session else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status),
-                          userInfo: [NSLocalizedDescriptionKey: "Nie udało się uruchomić enkodera HEVC (\(status))."])
+                          userInfo: [NSLocalizedDescriptionKey: "Nie udało się uruchomić kodowania wideo."])
         }
         let bitrate = min(max(Double(width * height) * Double(fps) * bitsPerPixel, 3_000_000), 50_000_000)
         let props: [CFString: Any] = [
@@ -492,10 +597,14 @@ final class VideoEncoder {
 
     func encode(_ pixelBuffer: CVPixelBuffer, pts: CMTime) {
         guard let session else { return }
-        VTCompressionSessionEncodeFrame(session, imageBuffer: pixelBuffer, presentationTimeStamp: pts,
-                                        duration: .invalid, frameProperties: nil, infoFlagsOut: nil) { [output] status, _, sample in
+        let status = VTCompressionSessionEncodeFrame(session, imageBuffer: pixelBuffer, presentationTimeStamp: pts,
+                                                     duration: .invalid, frameProperties: nil, infoFlagsOut: nil) { [output] status, _, sample in
             guard status == noErr, let sample else { return }
             output(sample)
+        }
+        if status == kVTInvalidSessionErr, !reportedInvalid {
+            reportedInvalid = true
+            onInvalid?()
         }
     }
 

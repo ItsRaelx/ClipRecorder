@@ -45,7 +45,7 @@ struct RecordingHUD: View {
                 .background(Capsule().fill(.white.opacity(0.1)))
             }
             .buttonStyle(.plain)
-            .help("Dodaj znacznik" + (state.markerCombo.map { " (\($0.label))" } ?? ""))
+            .help("Dodaj znacznik" + (state.markerCombo.map { "  \($0.label)" } ?? ""))
 
             Button(action: state.toggleClip) {
                 Label("Zapisz", systemImage: "stop.fill")
@@ -55,7 +55,7 @@ struct RecordingHUD: View {
                     .background(Capsule().fill(accent))
             }
             .buttonStyle(.plain)
-            .help("Zatrzymaj i zapisz" + (state.toggleCombo.map { " (\($0.label))" } ?? ""))
+            .help("Zatrzymaj i zapisz" + (state.toggleCombo.map { "  \($0.label)" } ?? ""))
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 8)

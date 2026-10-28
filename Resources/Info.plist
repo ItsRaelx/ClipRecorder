@@ -6,6 +6,13 @@
     <string>ClipRecorder</string>
     <key>CFBundleDisplayName</key>
     <string>ClipRecorder</string>
+    <!-- The UI is Polish: system-provided parts (trim bar, standard menus) follow it. -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>pl</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>pl</string>
+    </array>
     <key>CFBundleIdentifier</key>
     <string>io.github.itsraelx.ClipRecorder</string>
     <key>CFBundleExecutable</key>
@@ -26,6 +33,19 @@
     <string>ClipRecorder nagrywa Twój mikrofon na osobną ścieżkę w klipach.</string>
     <key>ClipRecorderUpdateRepo</key>
     <string>ItsRaelx/ClipRecorder</string>
+    <key>ClipRecorderCloudServer</key>
+    <string>https://clip.secc.me</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.github.itsraelx.ClipRecorder</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>cliprecorder</string>
+            </array>
+        </dict>
+    </array>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 Dawid Iwański · PolyForm Noncommercial 1.0.0</string>
     <key>LSApplicationCategoryType</key>

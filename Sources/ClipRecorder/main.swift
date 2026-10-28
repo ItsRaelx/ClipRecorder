@@ -9,20 +9,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let popover = NSPopover()
     private var hud: NSPanel?
     private var settingsWindow: NSWindow?
+    private let settingsNav = SettingsView.Navigation(.general)
     private lazy var preview = ClipPreviewController(state: state)
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePopover)
+        statusItem.button?.action = #selector(statusItemClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem.button?.imagePosition = .imageLeading
 
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: PopoverView(state: state))
 
         state.onClipReady = { [weak self] url in self?.preview.show(url) }
-        state.onOpenSettings = { [weak self] in self?.showSettings() }
+        state.onOpenSettings = { [weak self] section in self?.showSettings(section) }
 
         state.objectWillChange
             .receive(on: RunLoop.main)
@@ -31,6 +33,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshChrome()
 
         state.start()
+    }
+
+    /// Automation (Shortcuts, Stream Deck, scripts): `open cliprecorder://save` etc.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "cliprecorder" {
+            switch url.host() ?? url.path() {
+            case "save": state.saveInstantClip()
+            case "record", "toggle": state.toggleClip()
+            case "stop": if state.isRecording { state.toggleClip() }
+            case "marker": state.addMarker()
+            case "pause": state.togglePause()
+            case "resume": state.resume()
+            case "open-last": if let last = state.recentClips.first { state.open(last) }
+            case "settings": showSettings()
+            default: NSLog("ClipRecorder: unknown URL \(url)")
+            }
+        }
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard state.needsQuitConfirmation else { return .terminateNow }
+        // Save the running clip first instead of leaving a broken file behind.
+        state.prepareToQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            showQuickMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    /// Right-click menu: the common actions without opening the popover.
+    private func showQuickMenu() {
+        popover.performClose(nil)
+        let menu = NSMenu()
+        func add(_ title: String, _ symbol: String? = nil, enabled: Bool = true, _ action: @escaping () -> Void) {
+            let item = ClosureMenuItem(title: title, action: action)
+            if let symbol { item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
+            item.isEnabled = enabled
+            menu.addItem(item)
+        }
+        let ready = state.status == .buffering
+        if state.isRecording {
+            add("Zatrzymaj i zapisz", "stop.fill") { [state] in state.toggleClip() }
+            add("Dodaj znacznik", "bookmark.fill") { [state] in state.addMarker() }
+        } else {
+            add("Nagrywaj od \(state.bufferLabel) wstecz", "record.circle", enabled: ready) { [state] in state.toggleClip() }
+            add("Zapisz ostatnie \(state.bufferLabel)", "bolt.fill", enabled: ready) { [state] in state.saveInstantClip() }
+        }
+        menu.addItem(.separator())
+        if let last = state.recentClips.first {
+            add("Otwórz ostatni klip", "play.rectangle") { [state] in state.open(last) }
+        }
+        add("Pokaż folder z klipami", "folder") { [state] in state.openClipsFolder() }
+        menu.addItem(.separator())
+        if state.userPaused {
+            add("Wznów nagrywanie w tle", "play.fill") { [state] in state.resume() }
+        } else {
+            let pause = NSMenuItem(title: "Wstrzymaj", action: nil, keyEquivalent: "")
+            pause.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: nil)
+            pause.isEnabled = !state.isRecording
+            let sub = NSMenu()
+            for (title, duration) in [("Na 15 minut", 15.0 * 60), ("Na godzinę", 3600), ("Do wznowienia", -1)] {
+                sub.addItem(ClosureMenuItem(title: title) { [state] in state.pause(for: duration < 0 ? nil : duration) })
+            }
+            pause.submenu = sub
+            menu.addItem(pause)
+        }
+        add("Ustawienia…", "gearshape") { [weak self] in self?.showSettings() }
+        menu.addItem(.separator())
+        add("Zakończ ClipRecorder") { NSApp.terminate(nil) }
+
+        menu.autoenablesItems = false
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)  // opens the menu at the right spot
+        statusItem.menu = nil                 // left click keeps opening the popover
     }
 
     @objc private func togglePopover() {
@@ -43,35 +125,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showSettings() {
+    private func showSettings(_ section: SettingsView.Section? = nil) {
         popover.performClose(nil)
+        if let section {
+            if settingsWindow == nil { settingsNav.section = section } else { withAnimation(snappy) { settingsNav.section = section } }
+        }
         if settingsWindow == nil {
-            settingsWindow = SettingsView.makeWindow(state: state)
+            settingsWindow = SettingsView.makeWindow(state: state, nav: settingsNav)
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
+    private var iconKey = ""
+
     private func refreshChrome() {
         guard let button = statusItem.button else { return }
+        // Called on every state change (twice a second while recording) – only redraw when needed.
+        let dark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let key: String
         switch state.status {
-        case .failed:
-            let image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: "ClipRecorder")
-            image?.isTemplate = true
-            button.image = image
-        case .recording:
-            let dark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            button.image = MenuBarIcon.image(.recording, darkMenuBar: dark)
-        case .paused:
-            button.image = MenuBarIcon.image(.paused)
-        default:
-            button.image = MenuBarIcon.image(.idle)
+        case .failed: key = "failed"
+        case .recording: key = dark ? "recording-dark" : "recording"
+        case .paused: key = "paused"
+        default: key = "idle"
         }
-        button.contentTintColor = nil
-        button.title = state.isRecording ? " \(formatDuration(state.elapsed))" : ""
-        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        if key != iconKey {
+            iconKey = key
+            switch state.status {
+            case .failed:
+                let image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: "ClipRecorder")
+                image?.isTemplate = true
+                button.image = image
+            case .recording: button.image = MenuBarIcon.image(.recording, darkMenuBar: dark)
+            case .paused: button.image = MenuBarIcon.image(.paused)
+            default: button.image = MenuBarIcon.image(.idle)
+            }
+            button.contentTintColor = nil
+            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        }
+        let title = state.isRecording ? " \(formatDuration(state.elapsed))" : ""
+        if button.title != title { button.title = title }
+        button.toolTip = tooltip
 
         if state.isRecording { showHUD() } else { hideHUD() }
+    }
+
+    private var tooltip: String {
+        switch state.status {
+        case .starting: return "ClipRecorder – uruchamianie"
+        case .buffering: return "ClipRecorder – gotowy, pamięta ostatnie \(state.bufferLabel)"
+        case .recording: return "ClipRecorder – nagrywanie"
+        case .paused(let reason): return "ClipRecorder – \(reason.lowercased())"
+        case .failed: return "ClipRecorder – potrzebny dostęp"
+        }
     }
 
     private func showHUD() {
@@ -120,6 +227,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { panel.orderOut(nil) }
         })
     }
+}
+
+/// Menu item that runs a closure (keeps the quick menu code short).
+final class ClosureMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(title: String, action handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+    }
+
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func run() { handler() }
 }
 
 MainActor.assumeIsolated {

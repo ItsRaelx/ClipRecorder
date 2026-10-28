@@ -14,13 +14,18 @@ final class SampleRing {
             switch stored {
             case .memory(let sample): return sample
             case .disk(let chunk, let offset, let length, let meta): return meta.restore(chunk.read(offset: offset, length: length), pts: pts, isKeyframe: isKeyframe)
+            case .released: return nil
             }
         }
+
+        /// Same item without its payload (for trimmed slots that haven't been compacted yet).
+        fileprivate var released: Item { Item(pts: pts, isKeyframe: isKeyframe, stored: .released) }
 
         var formatDescription: CMFormatDescription? {
             switch stored {
             case .memory(let sample): return sample.formatDescription
             case .disk(_, _, _, let meta): return meta.format
+            case .released: return nil
             }
         }
     }
@@ -28,6 +33,7 @@ final class SampleRing {
     fileprivate enum Stored {
         case memory(CMSampleBuffer)
         case disk(Chunk, offset: UInt64, length: Int, meta: Meta)
+        case released
     }
 
     fileprivate struct Meta {
@@ -71,11 +77,12 @@ final class SampleRing {
 
     /// One file on disk. Deleted automatically once nothing references it anymore
     /// (neither the ring nor a clip that is still being written from it).
+    /// Only the chunk being filled keeps a file open: a 10-minute buffer has ~180
+    /// chunks and apps get just 256 file descriptors.
     fileprivate final class Chunk {
         let url: URL
         let startPTS: CMTime
         private var writeHandle: FileHandle?
-        private var readHandle: FileHandle?
         private let lock = NSLock()
         private(set) var size: UInt64 = 0
 
@@ -96,22 +103,31 @@ final class SampleRing {
             return offset
         }
 
-        func read(offset: UInt64, length: Int) -> Data? {
+        /// Called when the ring moves on to the next chunk.
+        func closeForWriting() {
             lock.lock(); defer { lock.unlock() }
-            if readHandle == nil { readHandle = try? FileHandle(forReadingFrom: url) }
-            guard let readHandle else { return nil }
-            try? readHandle.seek(toOffset: offset)
-            return try? readHandle.read(upToCount: length)
+            try? writeHandle?.close()
+            writeHandle = nil
+        }
+
+        func read(offset: UInt64, length: Int) -> Data? {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            try? handle.seek(toOffset: offset)
+            return try? handle.read(upToCount: length)
         }
 
         deinit {
             try? writeHandle?.close()
-            try? readHandle?.close()
             try? FileManager.default.removeItem(at: url)
         }
     }
 
-    private(set) var items: [Item] = []
+    /// Live samples are `storage[head...]`; trimming just moves `head` (and compacts
+    /// now and then) instead of shifting megabytes ~90 times a second.
+    private var storage: [Item] = []
+    private var head = 0
+    var items: ArraySlice<Item> { storage[head...] }
     private let diskDirectory: URL?
     private var currentChunk: Chunk?
     private let chunkSeconds = 10.0
@@ -125,7 +141,7 @@ final class SampleRing {
     }
 
     var first: Item? { items.first }
-    var isEmpty: Bool { items.isEmpty }
+    var isEmpty: Bool { head >= storage.count }
 
     var span: Double {
         guard let a = items.first, let b = items.last else { return 0 }
@@ -135,39 +151,49 @@ final class SampleRing {
     func append(_ sample: CMSampleBuffer, isKeyframe: Bool = true) {
         let pts = sample.presentationTimeStamp
         guard let diskDirectory else {
-            items.append(Item(pts: pts, isKeyframe: isKeyframe, stored: .memory(sample)))
+            storage.append(Item(pts: pts, isKeyframe: isKeyframe, stored: .memory(sample)))
             return
         }
         guard let format = sample.formatDescription,
               let block = sample.dataBuffer,
               let bytes = Self.bytes(of: block) else { return }
         if currentChunk == nil || (pts - currentChunk!.startPTS).seconds >= chunkSeconds {
+            currentChunk?.closeForWriting()
             currentChunk = Chunk(directory: diskDirectory, startPTS: pts)
         }
         guard let chunk = currentChunk, let offset = chunk.write(bytes) else { return }
         let meta = Meta(format: format, duration: sample.duration,
                         sampleCount: CMSampleBufferGetNumSamples(sample),
                         isAudio: CMFormatDescriptionGetMediaType(format) == kCMMediaType_Audio)
-        items.append(Item(pts: pts, isKeyframe: isKeyframe, stored: .disk(chunk, offset: offset, length: bytes.count, meta: meta)))
+        storage.append(Item(pts: pts, isKeyframe: isKeyframe, stored: .disk(chunk, offset: offset, length: bytes.count, meta: meta)))
     }
 
     /// Drops samples older than `cutoff`. With `keyframeAligned` the buffer still
     /// starts on a keyframe (the newest keyframe not newer than the cutoff).
     func trim(olderThan cutoff: Double, keyframeAligned: Bool) {
-        var dropUntil = 0
+        var dropUntil = head
         if keyframeAligned {
-            for (i, item) in items.enumerated() {
-                if item.pts.seconds > cutoff { break }
-                if item.isKeyframe { dropUntil = i }
+            for i in head..<storage.count {
+                if storage[i].pts.seconds > cutoff { break }
+                if storage[i].isKeyframe { dropUntil = i }
             }
         } else {
-            dropUntil = items.firstIndex(where: { $0.pts.seconds >= cutoff }) ?? items.count
+            dropUntil = storage[head...].firstIndex(where: { $0.pts.seconds >= cutoff }) ?? storage.count
         }
-        if dropUntil > 0 { items.removeFirst(dropUntil) }
+        guard dropUntil > head else { return }
+        // Release dropped items right away (memory samples / chunk files).
+        for i in head..<dropUntil { storage[i] = storage[i].released }
+        head = dropUntil
+        if head > 2048 && head > storage.count / 2 {
+            storage.removeFirst(head)
+            head = 0
+        }
     }
 
     func removeAll() {
-        items.removeAll()
+        storage.removeAll()
+        head = 0
+        currentChunk?.closeForWriting()
         currentChunk = nil
     }
 

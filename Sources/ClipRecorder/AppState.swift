@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Combine
 import ServiceManagement
 
 @MainActor
@@ -22,7 +23,8 @@ final class AppState: ObservableObject {
     @Published var markerCount = 0
     @Published var isFinalizing = false
     /// Export progress (0…1) per clip.
-    @Published var exports: [URL: Double] = [:]
+    /// "Udostępnij link" progress (export + upload, 0…1) per clip.
+    @Published var shares: [URL: Double] = [:]
     @Published private(set) var microphones: [Microphones.Device] = []
     @Published private(set) var activeMic: Microphones.Device?
     @Published private(set) var hotKeyConflicts: Set<HotKeyCenter.Action> = []
@@ -63,21 +65,46 @@ final class AppState: ObservableObject {
 
     // MARK: Power
 
-    @Published var userPaused: Bool { didSet { save(userPaused, "userPaused"); updateRunning() } }
+    @Published var userPaused: Bool {
+        didSet {
+            save(userPaused, "userPaused")
+            if !userPaused { pausedUntil = nil }
+            updateRunning()
+        }
+    }
+    /// End of a timed pause ("Wstrzymaj na 15 minut"); nil = until resumed by hand.
+    @Published private(set) var pausedUntil: Date? {
+        didSet { save(pausedUntil, "pausedUntil"); scheduleAutoResume() }
+    }
     @Published var pauseOnBattery: Bool { didSet { save(pauseOnBattery, "pauseOnBattery"); updateRunning() } }
     @Published var pauseOnLowPower: Bool { didSet { save(pauseOnLowPower, "pauseOnLowPower"); updateRunning() } }
 
     /// Hooks for the AppKit layer.
     var onClipReady: ((URL) -> Void)?
-    var onOpenSettings: (() -> Void)?
+    var onOpenSettings: ((SettingsView.Section?) -> Void)?
 
     let engine = CaptureEngine()
     /// Separate object so 15 Hz meter updates don't re-render the whole UI.
     let levels = AudioLevels()
     let updater = UpdateChecker()
+    /// Thumbnails and details for the recent clips list.
+    let clipInfo = ClipInfoStore()
+    /// clip.secc.me account and uploads.
+    let cloud = CloudService()
+    /// Clip to upload as soon as the browser login completes.
+    private var pendingShare: URL?
+    /// Running "Udostępnij link" jobs, so they can be cancelled.
+    private var shareTasks: [URL: Task<Void, Never>] = [:]
+    private var cancellables = Set<AnyCancellable>()
     private var ticker: Timer?
     private var messageTask: Task<Void, Never>?
     private var deviceObservers: [Any] = []
+    private var resumeTask: Task<Void, Never>?
+    /// "Nagrywaj mimo to" while paused for battery/low power – lasts until the power state changes.
+    private var ignorePowerPause = false
+    /// Screen locked or asleep: macOS doesn't allow capturing then. Pause quietly and
+    /// start again the moment the user is back (instead of retrying with a backoff).
+    private var screenAway = false
     private var hasStarted = false
 
     // MARK: Derived
@@ -138,7 +165,9 @@ final class AppState: ObservableObject {
         soundsEnabled = d.bool(forKey: "soundsEnabled")
         showPreview = d.bool(forKey: "showPreview")
         checkForUpdates = d.bool(forKey: "checkForUpdates")
-        userPaused = d.bool(forKey: "userPaused")
+        let wasPaused = d.bool(forKey: "userPaused")
+        userPaused = wasPaused
+        pausedUntil = wasPaused ? d.object(forKey: "pausedUntil") as? Date : nil
         pauseOnBattery = d.bool(forKey: "pauseOnBattery")
         pauseOnLowPower = d.bool(forKey: "pauseOnLowPower")
 
@@ -148,13 +177,64 @@ final class AppState: ObservableObject {
         deviceObservers = Microphones.observeChanges { [weak self] in
             MainActor.assumeIsolated { self?.applyMicDevice() }
         }
+        watchScreenLock()
+        // An app on the "hide in recording" list may be launched later.
+        deviceObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard let id = app?.bundleIdentifier else { return }
+            MainActor.assumeIsolated { self?.engine.appLaunched(bundleID: id) }
+        })
         PowerMonitor.shared.onChange = { [weak self] in
-            MainActor.assumeIsolated { self?.updateRunning() }
+            MainActor.assumeIsolated {
+                self?.ignorePowerPause = false
+                self?.updateRunning()
+            }
         }
         loadRecentClips()
         wireEngine()
+        wireCloud()
+        HotKeyCenter.shared.onResume = { [weak self] in self?.registerHotKeys() }
         registerHotKeys()
         updater.start(enabled: checkForUpdates)
+        scheduleAutoResume()  // a timed pause may have run out while the app was closed
+    }
+
+    private func wireCloud() {
+        cloud.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        cloud.onError = { [weak self] text in
+            self?.flash(text)
+            self?.play("Basso")
+        }
+        // Login cancelled or failed → forget the clip that was waiting for it.
+        cloud.$pendingLogin
+            .removeDuplicates()
+            .sink { [weak self] pending in
+                guard let self, pending == nil, !self.cloud.isSignedIn else { return }
+                self.pendingShare = nil
+            }
+            .store(in: &cancellables)
+        // Only react to signing in/out – not to name or setting changes made on the website.
+        cloud.$account
+            .map { $0?.id }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] id in
+                guard let self else { return }
+                guard id != nil, let account = self.cloud.account else {
+                    self.shareTasks.values.forEach { $0.cancel() }  // signed out → stop uploads
+                    return
+                }
+                self.flash("Zalogowano jako \(account.name.isEmpty ? account.email : account.name).")
+                if let url = self.pendingShare {
+                    self.pendingShare = nil
+                    self.shareLink(url)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     /// Settings were stored under the old bundle ID before 1.0.0 – copy them over once.
@@ -185,6 +265,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             if self.isRecording { self.status = .buffering }
             self.stopTicker()
+            self.updateRunning()  // a power pause may have been waiting for the clip to end
             self.isFinalizing = true
             self.flash("Zapisywanie klipu…")
         }
@@ -206,6 +287,7 @@ final class AppState: ObservableObject {
                 self.clipSaved(url)
             }
         }
+        engine.onClipFailed = { [weak self] in self?.isFinalizing = false }
         engine.onLevels = { [weak self] system, mic in
             self?.levels.update(system: system, mic: mic)
         }
@@ -230,7 +312,8 @@ final class AppState: ObservableObject {
             applyMicDevice()  // device list is empty until mic access is granted
             guard CGPreflightScreenCaptureAccess() else {
                 CGRequestScreenCaptureAccess()
-                status = .failed("Brak dostępu do nagrywania ekranu. Włącz ClipRecorder w Ustawienia systemowe → Prywatność i ochrona → Nagrywanie ekranu i dźwięku systemowego, potem uruchom aplikację ponownie.")
+                status = .failed("Włącz ClipRecorder w Ustawieniach systemowych → Prywatność i ochrona → Nagrywanie ekranu i dźwięku systemowego. Potem uruchom aplikację ponownie.")
+                watchScreenPermission()
                 return
             }
             if case .failed = status { status = .starting }
@@ -239,21 +322,73 @@ final class AppState: ObservableObject {
     }
 
     /// Starts or pauses the buffer depending on the user's pause and power settings.
+    private func watchScreenLock() {
+        screenAway = Self.screenIsLocked
+        let workspace = NSWorkspace.shared.notificationCenter
+        let distributed = DistributedNotificationCenter.default()
+        let away: [(NotificationCenter, Notification.Name)] = [
+            (workspace, NSWorkspace.screensDidSleepNotification),
+            (distributed, Notification.Name("com.apple.screenIsLocked")),
+        ]
+        let back: [(NotificationCenter, Notification.Name)] = [
+            (workspace, NSWorkspace.screensDidWakeNotification),
+            (distributed, Notification.Name("com.apple.screenIsUnlocked")),
+        ]
+        for (center, name) in away {
+            deviceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setScreenAway(true) }
+            })
+        }
+        for (center, name) in back {
+            deviceObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.screenMayBeBack() }
+            })
+        }
+    }
+
+    /// Waking the display doesn't unlock it – only resume once both are true.
+    private static var screenIsLocked: Bool {
+        (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
+    private func screenMayBeBack() {
+        setScreenAway(Self.screenIsLocked)
+        // The session's lock flag can lag behind the notification – look again shortly.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            self?.setScreenAway(Self.screenIsLocked)
+        }
+    }
+
+    private func setScreenAway(_ away: Bool) {
+        guard away != screenAway else { return }
+        screenAway = away
+        updateRunning()
+    }
+
     private func updateRunning() {
         guard hasStarted else { return }
         if case .failed = status { return }
         let power = PowerMonitor.shared
         let reason: String?
-        if userPaused {
-            reason = "Bufor wstrzymany"
+        if screenAway {
+            reason = "Ekran zablokowany"
+        } else if userPaused, let pausedUntil {
+            reason = "Wstrzymane do \(pausedUntil.formatted(date: .omitted, time: .shortened))"
+        } else if userPaused {
+            reason = "Wstrzymane"
+        } else if ignorePowerPause {
+            reason = nil
         } else if pauseOnLowPower && power.isLowPowerMode {
-            reason = "Wstrzymany – tryb niskiego zużycia energii"
+            reason = "Wstrzymane w trybie oszczędzania energii"
         } else if pauseOnBattery && power.isOnBattery {
-            reason = "Wstrzymany – zasilanie z baterii"
+            reason = "Wstrzymane na baterii"
         } else {
             reason = nil
         }
         if let reason {
+            // Never cut a clip short because the charger was unplugged – pause once it's saved.
+            if isRecording && !userPaused { return }
             if !isPaused { engine.stop() }
             stopTicker()
             status = .paused(reason)
@@ -279,10 +414,60 @@ final class AppState: ObservableObject {
     // MARK: Clip actions
 
     func toggleClip() { engine.toggleClip() }
+
+    /// Quitting mid-recording first saves the clip (and lets it finish processing).
+    func prepareToQuit(_ done: @escaping () -> Void) {
+        if isRecording { engine.toggleClip() }
+        // Reply exactly once: when everything is saved, or after 20 s at the latest.
+        var replied = false
+        let finish = { if !replied { replied = true; done() } }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(20))
+            finish()
+        }
+        engine.whenIdle { [weak self] in
+            Task { @MainActor in
+                while let self, self.isFinalizing, !replied {
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+                finish()
+            }
+        }
+    }
+
+    var needsQuitConfirmation: Bool { isRecording || isFinalizing }
     func saveInstantClip() { engine.saveInstantClip() }
     func addMarker() { engine.addMarker() }
-    func togglePause() { userPaused.toggle() }
-    func openSettings() { onOpenSettings?() }
+    func togglePause() { if userPaused { resume() } else { pause(for: nil) } }
+
+    /// Pauses the background recording, optionally only for a while.
+    func pause(for duration: TimeInterval?) {
+        pausedUntil = duration.map { Date().addingTimeInterval($0) }
+        if userPaused { updateRunning() } else { userPaused = true }
+    }
+
+    func resume() { userPaused = false }
+
+    /// Paused because of battery / low power mode (not by the user).
+    var isPowerPaused: Bool { isPaused && !userPaused && !screenAway }
+
+    func resumeDespitePower() {
+        ignorePowerPause = true
+        updateRunning()
+    }
+
+    private func scheduleAutoResume() {
+        resumeTask?.cancel()
+        guard let pausedUntil else { return }
+        resumeTask = Task { [weak self] in
+            let wait = pausedUntil.timeIntervalSinceNow
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            guard !Task.isCancelled, let self, self.userPaused else { return }
+            self.resume()
+            self.flash("Nagrywanie w tle wznowione.")
+        }
+    }
+    func openSettings(_ section: SettingsView.Section? = nil) { onOpenSettings?(section) }
 
     func open(_ url: URL) { NSWorkspace.shared.open(url) }
     func reveal(_ url: URL) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -294,39 +479,138 @@ final class AppState: ObservableObject {
     }
 
     func delete(_ url: URL) {
+        cancelShare(url)
         do {
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             recentClips.removeAll { $0 == url }
+            cloud.forgetLink(for: url)
             flash("Przeniesiono do Kosza: \(url.deletingPathExtension().lastPathComponent)")
         } catch {
             flash("Nie udało się usunąć: \(error.localizedDescription)")
         }
     }
 
-    func export(_ url: URL, target: ShareExporter.Target) {
-        guard exports[url] == nil else { return }
-        exports[url] = 0
-        Task {
-            do {
-                let out = try await ShareExporter.export(url, target: target) { p in
-                    Task { @MainActor in if self.exports[url] != nil { self.exports[url] = p } }
+    // MARK: Sharing (clip.secc.me)
+
+    /// Converts the clip to a web MP4, uploads it and copies the link.
+    /// Not signed in → starts the browser login and shares right after it.
+    func shareLink(_ url: URL) { shareLink(url, quotaRefreshed: false) }
+
+    private func shareLink(_ url: URL, quotaRefreshed: Bool) {
+        if let link = cloud.link(for: url) {
+            copyLink(link)
+            return
+        }
+        guard cloud.isSignedIn else {
+            // Already waiting for the browser → keep that code (a new one would invalidate it).
+            if cloud.pendingLogin == nil { cloud.startLogin() } else { cloud.reopenLoginPage() }
+            pendingShare = url
+            flash("Zaloguj się w przeglądarce. Potem klip wyśle się sam.")
+            return
+        }
+        guard shares[url] == nil else { return }
+        // Known limits: say so now instead of after converting the whole clip. The numbers
+        // may be old (new day, space freed on the website) – refresh once before refusing.
+        if let quota = cloud.quota, quotaBlocks(quota) {
+            guard quotaRefreshed else {
+                Task {
+                    await cloud.refreshAccount()
+                    shareLink(url, quotaRefreshed: true)
                 }
-                exports[url] = nil
-                copyToPasteboard(out)
-                let mb = Double((try? out.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1_000_000
-                flash(String(format: "MP4 gotowy (%.1f MB) – skopiowany do schowka, wklej go np. w Discordzie.", mb))
-                play("Glass")
-            } catch {
-                exports[url] = nil
-                flash("Eksport nie powiódł się: \(error.localizedDescription)")
+                return
+            }
+            if quota.plan.uploadsPerDay > 0, quota.usage.uploadsToday >= quota.plan.uploadsPerDay {
+                flash("Dzisiejszy limit wysyłek (\(quota.plan.uploadsPerDay)) jest wykorzystany.")
                 play("Basso")
+                return
+            }
+            if quota.plan.storageBytes > 0, quota.usage.bytes >= quota.plan.storageBytes {
+                flash("Brak miejsca na koncie. Usuń stare klipy na stronie albo zmień plan.")
+                play("Basso")
+                return
             }
         }
+        shares[url] = 0
+        shareTasks[url] = Task {
+            defer { shareTasks[url] = nil }
+            let temp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("ClipRecorder-\(UUID().uuidString)", isDirectory: true)
+            defer { try? FileManager.default.removeItem(at: temp) }
+            do {
+                try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+                let mp4 = try await ShareExporter.export(url, to: temp) { p in
+                    Task { @MainActor in if self.shares[url] != nil { self.shares[url] = p * 0.3 } }
+                }
+                if let quota = cloud.quota, quota.plan.maxClipBytes > 0,
+                   let size = try? mp4.resourceValues(forKeys: [.fileSizeKey]).fileSize, Int64(size) > quota.plan.maxClipBytes {
+                    let limit = ByteCountFormatter.string(fromByteCount: quota.plan.maxClipBytes, countStyle: .file)
+                    throw CloudService.CloudError(message: "Klip jest za duży na Twój plan (do \(limit)). Przytnij go.")
+                }
+                let info = await Self.uploadInfo(for: mp4, title: url.deletingPathExtension().lastPathComponent)
+                let link = try await cloud.upload(mp4, info: info) { p in
+                    if self.shares[url] != nil { self.shares[url] = 0.3 + p * 0.7 }
+                }
+                shares[url] = nil
+                cloud.rememberLink(link, for: url)
+                copyLink(link)
+                play("Glass")
+                Task { await cloud.refreshAccount() }  // updated storage usage
+            } catch {
+                shares[url] = nil
+                if Task.isCancelled || error is CancellationError {
+                    // Deleting the clip cancels too – its own toast says enough then.
+                    if FileManager.default.fileExists(atPath: url.path) { flash("Anulowano udostępnianie.") }
+                } else {
+                    flash("Udostępnianie nie powiodło się: \(error.localizedDescription)")
+                    play("Basso")
+                }
+            }
+        }
+    }
+
+    private func quotaBlocks(_ quota: CloudService.Quota) -> Bool {
+        (quota.plan.uploadsPerDay > 0 && quota.usage.uploadsToday >= quota.plan.uploadsPerDay)
+            || (quota.plan.storageBytes > 0 && quota.usage.bytes >= quota.plan.storageBytes)
+    }
+
+    func cancelShare(_ url: URL) {
+        shareTasks[url]?.cancel()
+    }
+
+    func copyLink(_ link: URL) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(link.absoluteString, forType: .string)
+        flash("Link skopiowany.")
+    }
+
+    func openLink(_ url: URL) {
+        if let link = cloud.link(for: url) { NSWorkspace.shared.open(link) }
+    }
+
+    /// Duration, size and a JPEG frame for the clip page.
+    nonisolated static func uploadInfo(for file: URL, title: String) async -> CloudService.UploadInfo {
+        let asset = AVURLAsset(url: file)
+        let duration = (try? await asset.load(.duration).seconds) ?? 0
+        var info = CloudService.UploadInfo(title: title, duration: duration.isFinite ? duration : 0)
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let size = try? await track.load(.naturalSize) {
+            info.width = Int(size.width)
+            info.height = Int(size.height)
+        }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 1280, height: 720)
+        let time = CMTime(seconds: min(1, duration / 2), preferredTimescale: 600)
+        if let image = try? await generator.image(at: time).image {
+            info.thumbnail = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+        }
+        return info
     }
 
     func trim(_ url: URL) {
         TrimWindowController.show(url) { [weak self] range in
             guard let self else { return }
+            self.cloud.forgetLink(for: url)  // the shared copy is the untrimmed version
             self.isFinalizing = true
             self.flash("Przycinanie…")
             Task {
@@ -350,7 +634,11 @@ final class AppState: ObservableObject {
         let icon: NSImage?
     }
 
+    /// Snapshots show a fixed list instead of whatever happens to run on this Mac.
+    var runningAppsOverride: [AppChoice]?
+
     var runningApps: [AppChoice] {
+        if let runningAppsOverride { return runningAppsOverride }
         let own = Bundle.main.bundleIdentifier
         var seen = Set<String>()
         return NSWorkspace.shared.runningApplications
@@ -389,6 +677,37 @@ final class AppState: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
+    /// macOS only applies a new screen-recording permission after a restart – once
+    /// it shows up, offer that right in the card.
+    @Published private(set) var permissionGranted = false
+    private var permissionTask: Task<Void, Never>?
+
+    private func watchScreenPermission() {
+        permissionTask?.cancel()
+        permissionTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                if CGPreflightScreenCaptureAccess() {
+                    self.permissionGranted = true
+                    return
+                }
+            }
+        }
+    }
+
+    /// Starts a fresh copy of the app and quits this one.
+    func relaunch() {
+        let path = Bundle.main.bundlePath
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        let pid = ProcessInfo.processInfo.processIdentifier
+        // Wait until this process is really gone – otherwise `open` just activates it.
+        task.arguments = ["-c", "while kill -0 $1 2>/dev/null; do sleep 0.1; done; /usr/bin/open \"$0\"", path, String(pid)]
+        try? task.run()
+        NSApp.terminate(nil)
+    }
+
     func openPrivacySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
     }
@@ -402,6 +721,12 @@ final class AppState: ObservableObject {
     }
 
     func setCombo(_ combo: KeyCombo?, for action: HotKeyCenter.Action) {
+        // One combination can only do one thing – take it away from the other action.
+        if let combo {
+            for other in HotKeyCenter.Action.allCases where other != action && self.combo(for: other) == combo {
+                setCombo(nil, for: other)
+            }
+        }
         switch action {
         case .toggleClip: toggleCombo = combo
         case .instantClip: instantCombo = combo
@@ -419,6 +744,7 @@ final class AppState: ObservableObject {
         play("Glass")
         runCleanup(protecting: [url])
         if showPreview { onClipReady?(url) }
+        if cloud.autoShare && cloud.isSignedIn { shareLink(url) }
     }
 
     private func registerHotKeys() {
@@ -435,6 +761,7 @@ final class AppState: ObservableObject {
         let removed = ClipLibrary.cleanup(in: clipsDirectory, maxAgeDays: cleanupDays, maxGB: cleanupGB, keeping: protecting)
         if removed > 0 {
             loadRecentClips()
+            cloud.pruneLinks()
             NSLog("ClipRecorder: moved \(removed) old clip(s) to Trash")
         }
     }

@@ -14,6 +14,29 @@ final class HotKeyCenter {
 
     private var refs: [Action: EventHotKeyRef] = [:]
     private var handlers: [Action: () -> Void] = [:]
+    private var combos: [Action: KeyCombo] = [:]
+    /// While a shortcut is being recorded in Settings, all shortcuts are unregistered:
+    /// otherwise pressing a combination that's already in use would start a clip and
+    /// never reach the recorder.
+    var isSuspended: Bool { suspendCount > 0 }
+    private var suspendCount = 0
+    /// Called after a suspension ends, so the owner can register again and pick up
+    /// conflicts with other apps.
+    var onResume: (() -> Void)?
+
+    func suspend() {
+        suspendCount += 1
+        guard suspendCount == 1 else { return }
+        refs.values.forEach { UnregisterEventHotKey($0) }
+        refs.removeAll()
+    }
+
+    func resume() {
+        guard suspendCount > 0 else { return }
+        suspendCount -= 1
+        guard suspendCount == 0 else { return }
+        if let onResume { onResume() } else { for (action, combo) in combos { _ = registerRef(action, combo) } }
+    }
 
     private init() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -21,7 +44,7 @@ final class HotKeyCenter {
             var id = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                               nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
-            if let action = HotKeyCenter.Action(rawValue: id.id) {
+            if let action = HotKeyCenter.Action(rawValue: id.id), !HotKeyCenter.shared.isSuspended {
                 HotKeyCenter.shared.handlers[action]?()
             }
             return noErr
@@ -34,7 +57,13 @@ final class HotKeyCenter {
     func register(_ action: Action, combo: KeyCombo?, handler: @escaping () -> Void) -> Bool {
         if let ref = refs.removeValue(forKey: action) { UnregisterEventHotKey(ref) }
         handlers[action] = handler
+        combos[action] = combo
         guard let combo else { return true }
+        if isSuspended { return true }  // registered when the recorder finishes
+        return registerRef(action, combo)
+    }
+
+    private func registerRef(_ action: Action, _ combo: KeyCombo) -> Bool {
         var ref: EventHotKeyRef?
         let id = EventHotKeyID(signature: OSType(0x434C_4950), id: action.rawValue)  // 'CLIP'
         let status = RegisterEventHotKey(combo.keyCode, combo.modifiers, id, GetApplicationEventTarget(), 0, &ref)
@@ -56,8 +85,11 @@ extension KeyCombo {
         if flags.contains(.shift) { mods |= UInt32(shiftKey) }
         if flags.contains(.command) { mods |= UInt32(cmdKey) }
         let code = UInt32(event.keyCode)
-        // Plain letters/digits without a modifier would hijack normal typing.
-        if mods == 0 && !Self.functionKeys.keys.contains(Int(code)) { return nil }
+        // Plain letters, ⇧+letter (capitals) or ⌥+letter (ą, ę, …) would hijack normal
+        // typing – require ⌃ or ⌘, or ⌥⇧ together. Function keys may go alone.
+        let strong = mods & UInt32(controlKey | cmdKey) != 0
+            || (mods & UInt32(optionKey) != 0 && mods & UInt32(shiftKey) != 0)
+        if !strong && !Self.functionKeys.keys.contains(Int(code)) { return nil }
         self.init(keyCode: code, modifiers: mods)
     }
 

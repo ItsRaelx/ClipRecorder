@@ -24,6 +24,10 @@ struct PopoverView: View {
                     .transition(.cardSwap)
                 }
             }
+            if let login = state.cloud.pendingLogin {
+                LoginWaitingRow(code: login.userCode, reopen: state.cloud.reopenLoginPage, cancel: state.cloud.cancelLogin)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             if !state.recentClips.isEmpty { recentClips.transition(.opacity) }
             if let message = state.message {
                 Toast(text: message)
@@ -38,6 +42,8 @@ struct PopoverView: View {
         .animation(snappy, value: state.status)
         .animation(snappy, value: state.message)
         .animation(snappy, value: state.recentClips)
+        .animation(snappy, value: state.cloud.pendingLogin)
+        .animation(snappy, value: state.permissionGranted)
     }
 
     // MARK: Header
@@ -62,9 +68,9 @@ struct PopoverView: View {
         let (label, color, pulsing): (String, Color, Bool) = {
             switch state.status {
             case .starting: return ("Uruchamianie…", .secondary, true)
-            case .buffering: return ("Bufor \(state.bufferLabel)", onColor, true)
+            case .buffering: return ("Gotowy", onColor, true)
             case .recording: return ("Nagrywanie", accent, true)
-            case .paused: return ("Wstrzymany", .orange, false)
+            case .paused: return ("Wstrzymane", .orange, false)
             case .failed: return ("Brak dostępu", .orange, false)
             }
         }()
@@ -84,7 +90,7 @@ struct PopoverView: View {
 
     private var sources: some View {
         VStack(spacing: 6) {
-            SourceRow(icon: "speaker.wave.2.fill", title: "Dźwięk systemu", isOn: state.includeSystemAudio) {
+            SourceRow(icon: "speaker.wave.2.fill", title: "Dźwięk komputera", isOn: state.includeSystemAudio) {
                 if state.includeSystemAudio { TrackMeter(levels: state.levels, track: .system) }
                 OnOffPill(isOn: $state.includeSystemAudio)
             }
@@ -94,7 +100,7 @@ struct PopoverView: View {
                 OnOffPill(isOn: $state.includeMic)
             }
             if state.includeMic, state.activeMic?.isBluetooth == true {
-                Label("Mikrofon Bluetooth przełącza słuchawki w tryb rozmowy – muzyka zagra w gorszej jakości.",
+                Label("Mikrofon w słuchawkach Bluetooth pogarsza jakość muzyki.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -116,7 +122,7 @@ struct PopoverView: View {
                     PulsingDot()
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Nagrywanie").font(.subheadline.weight(.semibold))
-                        Text(state.markerCount == 0 ? "z \(state.bufferLabel) bufora" : "z \(state.bufferLabel) bufora · znaczniki: \(state.markerCount)")
+                        Text(state.markerCount == 0 ? "od \(state.bufferLabel) wstecz" : "od \(state.bufferLabel) wstecz · znaczniki: \(state.markerCount)")
                             .font(.caption).foregroundStyle(.secondary)
                             .contentTransition(.numericText())
                     }
@@ -147,18 +153,18 @@ struct PopoverView: View {
         } else {
             VStack(spacing: 8) {
                 Button(action: state.toggleClip) {
-                    Label("Klipuj ostatnie \(state.bufferLabel) i nagrywaj", systemImage: "record.circle.fill")
+                    Label("Nagrywaj od \(state.bufferLabel) wstecz", systemImage: "record.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: accent))
                 Button(action: state.saveInstantClip) {
-                    Label("Zapisz tylko ostatnie \(state.bufferLabel)", systemImage: "bolt.fill")
+                    Label("Zapisz ostatnie \(state.bufferLabel)", systemImage: "bolt.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
-                HStack(spacing: 12) {
-                    ShortcutHint(combo: state.toggleCombo, text: "klip")
-                    ShortcutHint(combo: state.instantCombo, text: "zapis")
+                HStack(spacing: 6) {
+                    ShortcutHint(combo: state.toggleCombo, text: "nagraj")
+                    ShortcutHint(combo: state.instantCombo, text: "zapisz")
                     ShortcutHint(combo: state.markerCombo, text: "znacznik")
                 }
                 .padding(.top, 2)
@@ -170,19 +176,29 @@ struct PopoverView: View {
     }
 
     private func pausedCard(_ reason: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "pause.circle.fill")
-                .font(.system(size: 28))
-                .foregroundStyle(.orange)
-                .symbolEffect(.pulse)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(reason).font(.subheadline.weight(.semibold))
-                Text("Ekran i dźwięk nie są teraz buforowane.").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "pause.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.orange)
+                    .symbolEffect(.pulse)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reason).font(.subheadline.weight(.semibold))
+                    Text("Aplikacja nic teraz nie nagrywa.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if state.userPaused {
+                    Button("Wznów", action: state.resume)
+                        .buttonStyle(BigButtonStyle(fill: onColor))
+                        .fixedSize()
+                }
             }
-            Spacer()
-            if state.userPaused {
-                Button("Wznów") { state.userPaused = false }
-                    .buttonStyle(BigButtonStyle(fill: onColor))
+            if state.isPowerPaused {
+                Button(action: state.resumeDespitePower) {
+                    Label("Nagrywaj mimo to", systemImage: "play.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
+                .help("Do następnej zmiany zasilania")
             }
         }
         .padding(12)
@@ -191,14 +207,26 @@ struct PopoverView: View {
 
     private func permissionCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Potrzebny dostęp", systemImage: "lock.trianglebadge.exclamationmark")
-                .font(.subheadline.weight(.semibold))
-            Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Otwórz Ustawienia", action: state.openPrivacySettings)
-                    .buttonStyle(BigButtonStyle(fill: accent))
-                Button("Spróbuj ponownie", action: state.start)
-                    .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
+            if state.permissionGranted {
+                Label("Dostęp nadany", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(onColor)
+                Text("Uruchom aplikację ponownie, żeby zaczęła nagrywać.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button(action: state.relaunch) {
+                    Label("Uruchom ponownie", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(BigButtonStyle(fill: onColor))
+            } else {
+                Label("Potrzebny dostęp", systemImage: "lock.trianglebadge.exclamationmark")
+                    .font(.subheadline.weight(.semibold))
+                Text(text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Otwórz Ustawienia", action: state.openPrivacySettings)
+                        .buttonStyle(BigButtonStyle(fill: accent))
+                    Button("Uruchom ponownie", action: state.relaunch)
+                        .buttonStyle(BigButtonStyle(fill: .primary.opacity(0.08), foreground: .primary))
+                }
             }
         }
         .padding(12)
@@ -219,8 +247,8 @@ struct PopoverView: View {
                     .buttonStyle(.link)
                     .font(.caption)
             }
-            ForEach(state.recentClips.prefix(4), id: \.self) { url in
-                ClipRow(url: url, state: state)
+            ForEach(state.recentClips.prefix(3), id: \.self) { url in
+                ClipRow(url: url, state: state, info: state.clipInfo)
                     .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity),
                                             removal: .move(edge: .trailing).combined(with: .opacity)))
             }
@@ -232,21 +260,15 @@ struct PopoverView: View {
 
     private var footer: some View {
         HStack(spacing: 14) {
-            Button {
-                state.togglePause()
-            } label: {
-                Label(state.userPaused ? "Wznów bufor" : "Wstrzymaj",
-                      systemImage: state.userPaused ? "play.fill" : "pause.fill")
-                    .contentTransition(.symbolEffect(.replace))
-            }
-            .disabled(state.isRecording)
+            PauseButton(state: state)
             Spacer()
+            AccountButton(state: state, cloud: state.cloud)
             Button {
                 state.openSettings()
             } label: {
-                Label("Ustawienia", systemImage: "gearshape")
+                Label("Ustawienia", systemImage: "gearshape").fixedSize()
             }
-            Button("Zakończ") { NSApp.terminate(nil) }
+            Button("Zakończ") { NSApp.terminate(nil) }.fixedSize()
         }
         .buttonStyle(.borderless)
         .font(.caption)
@@ -293,7 +315,7 @@ struct MicMenu: View {
     var body: some View {
         Menu {
             Picker("", selection: $state.micSelection) {
-                Text("Automatycznie (omija mikrofony Bluetooth)").tag(Microphones.auto)
+                Text("Automatycznie").tag(Microphones.auto)
                 Divider()
                 ForEach(state.microphones) { mic in
                     Text(mic.isBluetooth ? "\(mic.name) – Bluetooth" : mic.name).tag(mic.id)
@@ -314,22 +336,83 @@ struct MicMenu: View {
     }
 }
 
+/// "Wstrzymaj" with a choice of how long; "Wznów" while paused.
+struct PauseButton: View {
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        if state.userPaused {
+            Button(action: state.resume) {
+                Label("Wznów", systemImage: "play.fill")
+            }
+        } else {
+            PopupMenuButton(items: {
+                [PopupMenuItem(title: "Na 15 minut") { state.pause(for: 15 * 60) },
+                 PopupMenuItem(title: "Na godzinę") { state.pause(for: 3600) },
+                 PopupMenuItem(title: "Do wznowienia") { state.pause(for: nil) }]
+            }) {
+                Label("Wstrzymaj", systemImage: "pause.fill")
+            }
+            .fixedSize()
+            .disabled(state.isRecording)
+            .help("Wstrzymaj nagrywanie w tle")
+        }
+    }
+}
+
+/// Account entry in the popover footer: "Zaloguj się" or the account menu.
+private struct AccountButton: View {
+    @ObservedObject var state: AppState
+    @ObservedObject var cloud: CloudService
+
+    var body: some View {
+        if let account = cloud.account {
+            PopupMenuButton(items: {
+                [.header(account.email),
+                 PopupMenuItem(title: "Moje klipy") { cloud.openDashboard() },
+                 PopupMenuItem(title: "Ustawienia konta…") { state.openSettings(.account) },
+                 .separator,
+                 PopupMenuItem(title: "Wyloguj") { cloud.signOut() }]
+            }) {
+                Label(account.name.isEmpty ? account.username : account.name, systemImage: "person.crop.circle.fill")
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 110)
+            .help("Twoje konto")
+        } else {
+            Button {
+                cloud.startLogin()
+            } label: {
+                Label("Zaloguj", systemImage: "person.crop.circle.badge.plus")
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            .disabled(cloud.pendingLogin != nil)
+            .help("Zaloguj się, aby udostępniać klipy linkiem")
+        }
+    }
+}
+
 /// Actions available for a saved clip (shared by the popover rows and the preview).
 struct ClipActionsMenu: View {
     let url: URL
     @ObservedObject var state: AppState
 
     var body: some View {
+        if state.shares[url] != nil {
+            Button("Anuluj wysyłanie") { state.cancelShare(url) }
+        } else if state.cloud.link(for: url) != nil {
+            Button("Kopiuj link") { state.shareLink(url) }
+            Button("Otwórz link") { state.openLink(url) }
+        } else {
+            Button("Udostępnij link") { state.shareLink(url) }
+        }
+        Divider()
         Button("Otwórz") { state.open(url) }
         Button("Pokaż w Finderze") { state.reveal(url) }
         Button("Kopiuj plik") { state.copyToPasteboard(url) }
         Divider()
         Button("Przytnij…") { state.trim(url) }
-        Menu("Eksportuj MP4 (tylko miks)") {
-            ForEach(ShareExporter.Target.allCases) { target in
-                Button(target.label) { state.export(url, target: target) }
-            }
-        }
         Divider()
         Button("Przenieś do Kosza", role: .destructive) { state.delete(url) }
     }
@@ -378,7 +461,7 @@ private struct OnOffPill: View {
             .frame(width: 44, height: 18)
         }
         .buttonStyle(.plain)
-        .help(isOn ? "Ścieżka będzie zapisana w klipie" : "Ścieżka zostanie pominięta")
+        .help(isOn ? "Będzie słychać w klipie" : "Nie będzie słychać w klipie")
     }
 }
 
@@ -388,9 +471,9 @@ private struct ShortcutHint: View {
 
     var body: some View {
         if let combo {
-            HStack(spacing: 5) {
+            HStack(spacing: 3) {
                 KeyCaps(keys: combo.keys)
-                Text(text).font(.caption2).foregroundStyle(.secondary)
+                Text(text).font(.caption2).foregroundStyle(.secondary).fixedSize()
             }
         }
     }
@@ -399,18 +482,25 @@ private struct ShortcutHint: View {
 private struct ClipRow: View {
     let url: URL
     @ObservedObject var state: AppState
+    @ObservedObject var info: ClipInfoStore
     @StateObject private var hover = Flag()
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "film")
-                .foregroundStyle(hover.value ? accent : .secondary)
-            Text(url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "Klip ", with: ""))
-                .font(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer()
-            if let progress = state.exports[url] {
+        let details = info.info(for: url)
+        HStack(spacing: 10) {
+            thumbnail(details?.thumbnail)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ClipInfoStore.label(for: details?.created ?? created))
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text(details.map { "\(formatDuration($0.duration)) · \(ByteCountFormatter.string(fromByteCount: Int64($0.size), countStyle: .file))" } ?? " ")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if let progress = state.shares[url] {
                 ProgressView(value: progress)
                     .frame(width: 60)
                     .controlSize(.small)
@@ -418,6 +508,10 @@ private struct ClipRow: View {
                     .transition(.scale.combined(with: .opacity))
             } else if hover.value {
                 HStack(spacing: 6) {
+                    Button { state.shareLink(url) } label: {
+                        Image(systemName: state.cloud.link(for: url) == nil ? "link" : "doc.on.doc")
+                    }
+                    .help(state.cloud.link(for: url) == nil ? "Udostępnij link" : "Kopiuj link")
                     Button { state.trim(url) } label: { Image(systemName: "scissors") }
                         .help("Przytnij")
                     Menu {
@@ -433,15 +527,52 @@ private struct ClipRow: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
-        .padding(.horizontal, 8)
-        .frame(height: 28)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(hover.value ? 0.07 : 0)))
+        .padding(.horizontal, 6)
+        .frame(height: 40)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(hover.value ? 0.07 : 0)))
+        // Keyed on the file's version, so a trimmed clip gets a fresh thumbnail.
+        .task(id: modified) { info.load(url) }
         .contentShape(Rectangle())
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover.value = h } }
         .onTapGesture(count: 2) { state.open(url) }
         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
         .contextMenu { ClipActionsMenu(url: url, state: state) }
-        .animation(snappy, value: state.exports[url] != nil)
-        .help("Kliknij dwukrotnie, aby otworzyć · przeciągnij, aby wrzucić gdzie indziej · prawy klik: więcej")
+        .animation(snappy, value: (state.shares[url]) != nil)
+        .help("Kliknij dwa razy, aby otworzyć. Prawy klik: więcej opcji.")
+    }
+
+    private var modified: Date {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+    }
+
+    private var created: Date {
+        (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
+    }
+
+    private func thumbnail(_ image: NSImage?) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.08))
+            if let image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                    .transition(.opacity)
+            } else {
+                Image(systemName: "film").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 48, height: 27)
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color.primary.opacity(0.1)))
+        .overlay(alignment: .bottomTrailing) {
+            if state.cloud.link(for: url) != nil {
+                Image(systemName: "link")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 13, height: 13)
+                    .background(Circle().fill(onColor))
+                    .offset(x: 4, y: 4)
+                    .help("Udostępniony linkiem")
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: image != nil)
     }
 }

@@ -72,7 +72,10 @@ final class ClipPreviewController {
             try? await Task.sleep(for: .seconds(Self.visibleSeconds))
             guard !Task.isCancelled, let self else { return }
             // Keep it up while an export of this clip is running.
-            if let url = self.model.url, self.state.exports[url] != nil { self.scheduleHide(); return }
+            if let url = self.model.url, self.state.shares[url] != nil {
+                self.scheduleHide()
+                return
+            }
             self.hide()
         }
     }
@@ -143,19 +146,22 @@ struct ClipPreviewView: View {
                         }
                         Spacer()
                     }
-                    if let progress = state.exports[url] {
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Text("Eksportowanie MP4…").font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Text("\(Int(progress * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                                    .contentTransition(.numericText())
+                    if let progress = state.shares[url] {
+                        ProgressRow(title: "Wysyłanie…", progress: progress,
+                                    cancel: { state.cancelShare(url) })
+                            .transition(.opacity)
+                    } else {
+                        VStack(spacing: 8) {
+                            if let login = state.cloud.pendingLogin {
+                                LoginWaitingRow(code: login.userCode, reopen: state.cloud.reopenLoginPage, cancel: state.cloud.cancelLogin)
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+                            } else if let link = state.cloud.link(for: url) {
+                                LinkRow(link: link, copy: { state.copyLink(link) }, open: { NSWorkspace.shared.open(link) })
+                                    .transition(.move(edge: .top).combined(with: .opacity))
                             }
-                            ProgressView(value: progress).tint(accent)
+                            actions(url)
                         }
                         .transition(.opacity)
-                    } else {
-                        actions(url).transition(.opacity)
                     }
                 }
                 .padding(12)
@@ -174,7 +180,9 @@ struct ClipPreviewView: View {
         .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
         .padding(16)  // room for the shadow
         .environment(\.colorScheme, .dark)
-        .animation(snappy, value: model.url.flatMap { state.exports[$0] } != nil)
+        .animation(snappy, value: model.url.flatMap { state.shares[$0] } != nil)
+        .animation(snappy, value: model.url.flatMap { state.cloud.link(for: $0) })
+        .animation(snappy, value: state.cloud.pendingLogin)
         .onHover { hovering in
             if hovering { model.pauseCountdown() }
             model.onHoverChange?(hovering)
@@ -240,29 +248,23 @@ struct ClipPreviewView: View {
         .onHover { h in withAnimation(snappy) { hoverThumb.value = h } }
         .onTapGesture { state.open(url) }
         .onDrag { NSItemProvider(contentsOf: url) ?? NSItemProvider() }
-        .help("Kliknij, aby obejrzeć · przeciągnij do Discorda, Messengera, Findera…")
+        .help("Kliknij, aby obejrzeć. Możesz też przeciągnąć klip, gdzie chcesz.")
     }
 
     private func actions(_ url: URL) -> some View {
-        HStack(spacing: 6) {
-            Menu {
-                Section("Eksportuj MP4 (tylko miks)") {
-                    ForEach(ShareExporter.Target.allCases) { target in
-                        Button(target.label) { state.export(url, target: target) }
-                    }
-                }
-                Button("Kopiuj oryginalny plik") { state.copyToPasteboard(url) }
-            } label: {
-                Label("Udostępnij", systemImage: "square.and.arrow.up")
+        let shared = state.cloud.link(for: url) != nil
+        return HStack(spacing: 6) {
+            Button { state.shareLink(url) } label: {
+                Label(shared ? "Kopiuj link" : "Udostępnij link", systemImage: shared ? "doc.on.doc" : "link")
                     .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(maxWidth: .infinity, minHeight: 30)
+                    .background(Capsule().fill(accent))
+                    .contentShape(Capsule())
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .tint(.white)
-            .fixedSize()
-            .frame(maxWidth: .infinity, minHeight: 30)
-            .background(Capsule().fill(accent))
-            .contentShape(Capsule())
+            .buttonStyle(PressableStyle())
+            .help(shared ? "Skopiuj link do schowka" : "Wyślij klip i skopiuj link")
             IconButton(icon: "scissors", help: "Przytnij") { state.trim(url) }
             IconButton(icon: "folder", help: "Pokaż w Finderze") { state.reveal(url) }
             IconButton(icon: "trash", help: "Przenieś do Kosza", tint: accent) {
@@ -270,6 +272,105 @@ struct ClipPreviewView: View {
                 model.onClose?()
             }
         }
+    }
+}
+
+private struct ProgressRow: View {
+    let title: String
+    let progress: Double
+    var cancel: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                Text("\(Int(progress * 100))%").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                if let cancel {
+                    Button(action: cancel) { Image(systemName: "xmark.circle.fill").font(.system(size: 12)) }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Anuluj wysyłanie")
+                }
+            }
+            ProgressView(value: progress).tint(accent)
+                .animation(.easeOut(duration: 0.2), value: progress)
+        }
+    }
+}
+
+/// Copied link (teal capsule, click to copy again).
+struct LinkRow: View {
+    let link: URL
+    let copy: () -> Void
+    let open: () -> Void
+    @StateObject private var hover = Flag()
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "link").font(.system(size: 11, weight: .semibold)).foregroundStyle(onColor)
+            Text("\(link.host() ?? "")\(link.path())")
+                .font(.system(size: 11, design: .monospaced))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: open) {
+                Image(systemName: "arrow.up.right").font(.system(size: 10, weight: .bold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(onColor)
+            .help("Otwórz w przeglądarce")
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        // Radius just under half the height: a stroked full capsule renders a seam at its ends.
+        .background {
+            RoundedRectangle(cornerRadius: 13, style: .circular)
+                .fill(onColor.opacity(hover.value ? 0.2 : 0.13))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .circular).strokeBorder(onColor.opacity(0.3)))
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 13, style: .circular))
+        .onTapGesture(perform: copy)
+        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover.value = h } }
+        .help("Kliknij, aby skopiować link")
+    }
+}
+
+/// Shown while the browser login (device code) is pending.
+struct LoginWaitingRow: View {
+    let code: String
+    let reopen: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Dokończ logowanie w przeglądarce").font(.caption.weight(.semibold))
+                Text("Kod: \(code)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Button("Otwórz", action: reopen).buttonStyle(.link).font(.caption)
+            Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Anuluj logowanie")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.07)))
+    }
+}
+
+/// Plain button with a spring press.
+struct PressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .brightness(configuration.isPressed ? -0.05 : 0)
+            .animation(snappy, value: configuration.isPressed)
     }
 }
 
@@ -282,16 +383,28 @@ private struct IconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(tint)
-                .frame(width: 32, height: 30)
-                .background(Capsule().fill(.white.opacity(hover.value ? 0.16 : 0.08)))
-                .scaleEffect(hover.value ? 1.06 : 1)
+            IconLabel(icon: icon, tint: tint, hovering: hover.value)
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(snappy) { hover.value = h } }
         .help(help)
+    }
+}
+
+/// Round icon used by every small action in the preview card.
+private struct IconLabel: View {
+    let icon: String
+    var tint: Color = .white
+    var hovering = false
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(tint)
+            .frame(width: 30, height: 30)
+            .background(Circle().fill(.white.opacity(hovering ? 0.16 : 0.08)))
+            .contentShape(Circle())
+            .scaleEffect(hovering ? 1.06 : 1)
     }
 }
 

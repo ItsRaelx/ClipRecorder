@@ -4,11 +4,12 @@ import SwiftUI
 /// with colored icons, section title inside the content, native grouped forms.
 struct SettingsView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case general, recording, audio, shortcuts, privacy
+        case general, account, recording, audio, shortcuts, privacy
         var id: String { rawValue }
         var title: String {
             switch self {
             case .general: return "Ogólne"
+            case .account: return "Konto"
             case .recording: return "Nagrywanie"
             case .audio: return "Dźwięk"
             case .shortcuts: return "Skróty"
@@ -18,6 +19,7 @@ struct SettingsView: View {
         var color: Color {
             switch self {
             case .general: return .gray
+            case .account: return .teal
             case .recording: return accent
             case .audio: return onColor
             case .shortcuts: return .indigo
@@ -27,6 +29,7 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .general: return "gearshape"
+            case .account: return "link"
             case .recording: return "record.circle"
             case .audio: return "waveform"
             case .shortcuts: return "keyboard"
@@ -41,13 +44,9 @@ struct SettingsView: View {
     }
 
     @ObservedObject var state: AppState
-    @StateObject private var nav: Navigation
+    /// Owned by the window's creator, so it can switch sections of an open window.
+    @ObservedObject var nav: Navigation
     @Namespace private var selection
-
-    init(state: AppState, section: Section = .general) {
-        self.state = state
-        _nav = StateObject(wrappedValue: Navigation(section))
-    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -72,7 +71,7 @@ struct SettingsView: View {
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 22, height: 22)
                 VStack(alignment: .leading, spacing: 0) {
                     Text("ClipRecorder").font(.caption.weight(.semibold))
-                    Text("Wersja \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")")
+                    Text("Wersja \(Self.version)")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
             }
@@ -96,6 +95,7 @@ struct SettingsView: View {
             Group {
                 switch nav.section {
                 case .general: GeneralSettings(state: state)
+                case .account: AccountSettings(state: state, cloud: state.cloud)
                 case .recording: RecordingSettings(state: state)
                 case .audio: AudioSettings(state: state)
                 case .shortcuts: ShortcutSettings(state: state)
@@ -114,11 +114,18 @@ struct SettingsView: View {
 
     /// Creates the settings window (borderless-looking title bar, content under it).
     @MainActor
+    /// Overridden by snapshots, which run outside the app bundle.
+    static var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+
     static func makeWindow(state: AppState, section: Section = .general) -> NSWindow {
+        makeWindow(state: state, nav: Navigation(section))
+    }
+
+    static func makeWindow(state: AppState, nav: Navigation) -> NSWindow {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                               styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
-        window.contentViewController = NSHostingController(rootView: SettingsView(state: state, section: section))
+        window.contentViewController = NSHostingController(rootView: SettingsView(state: state, nav: nav))
         window.title = "Ustawienia ClipRecorder"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
@@ -191,9 +198,9 @@ private struct GeneralSettings: View {
         Form {
             Section {
                 Toggle("Uruchamiaj przy logowaniu", isOn: Binding(get: { state.launchAtLogin }, set: { state.setLaunchAtLogin($0) }))
-                Toggle("Dźwięki przy starcie i zapisie klipu", isOn: $state.soundsEnabled)
-                Toggle("Pokazuj podgląd po zapisaniu klipu", isOn: $state.showPreview)
-                Toggle("Sprawdzaj dostępność nowych wersji (GitHub)", isOn: $state.checkForUpdates)
+                Toggle("Efekty dźwiękowe", isOn: $state.soundsEnabled)
+                Toggle("Pokazuj podgląd po zapisie", isOn: $state.showPreview)
+                Toggle("Sprawdzaj aktualizacje", isOn: $state.checkForUpdates)
             }
             Section {
                 LabeledContent("Folder") {
@@ -210,7 +217,7 @@ private struct GeneralSettings: View {
                     Text("30 dni").tag(30)
                     Text("90 dni").tag(90)
                 }
-                Picker("Gdy folder przekroczy", selection: $state.cleanupGB) {
+                Picker("Usuwaj, gdy folder przekroczy", selection: $state.cleanupGB) {
                     Text("Bez limitu").tag(0)
                     Text("10 GB").tag(10)
                     Text("20 GB").tag(20)
@@ -220,11 +227,183 @@ private struct GeneralSettings: View {
             } header: {
                 Text("Klipy")
             } footer: {
-                Text("Usuwane są najstarsze klipy – trafiają do Kosza, więc da się je jeszcze odzyskać.")
+                Text("Stare klipy trafiają do Kosza, więc da się je odzyskać.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
         }
+    }
+}
+
+private struct AccountSettings: View {
+    @ObservedObject var state: AppState
+    @ObservedObject var cloud: CloudService
+    @StateObject private var editingServer = Flag()
+    @StateObject private var serverDraft = TextDraft()
+
+    var body: some View {
+        Form {
+            Section {
+                if let account = cloud.account {
+                    HStack(spacing: 12) {
+                        Text(initials(account.name.isEmpty ? account.email : account.name))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(LinearGradient(colors: [accent, accent.opacity(0.7)], startPoint: .top, endPoint: .bottom)))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(account.name.isEmpty ? account.username : account.name).font(.headline)
+                            Text("\(account.email) · @\(account.username)").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Moje klipy") { cloud.openDashboard() }
+                        Button("Wyloguj") { cloud.signOut() }
+                    }
+                    .padding(.vertical, 4)
+                    .transition(.opacity)
+                    if let quota = cloud.quota {
+                        QuotaRow(quota: quota, openPricing: cloud.openPricing)
+                    }
+                } else if let login = cloud.pendingLogin {
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.small)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Dokończ logowanie w przeglądarce").font(.headline)
+                            Text("Sprawdź, czy strona pokazuje ten sam kod.").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(login.userCode)
+                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    .padding(.vertical, 4)
+                    HStack {
+                        Spacer()
+                        Button("Otwórz stronę", action: cloud.reopenLoginPage)
+                        Button("Anuluj", action: cloud.cancelLogin)
+                    }
+                } else {
+                    HStack(spacing: 12) {
+                        Image(systemName: "link.circle.fill")
+                            .font(.system(size: 34))
+                            .foregroundStyle(onColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Udostępniaj klipy linkiem").font(.headline)
+                            Text("Logujesz się w przeglądarce. Aplikacja nie zna Twojego hasła.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    HStack {
+                        Button("Załóż konto…") { cloud.openSignUp() }
+                        Spacer()
+                        Button("Zaloguj się") { cloud.startLogin() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(accent)
+                    }
+                }
+            } header: {
+                Text("Konto")
+            }
+
+            Section {
+                Picker("Kto widzi nowe klipy", selection: $cloud.visibility) {
+                    ForEach(CloudService.Visibility.allCases) { Text($0.label).tag($0) }
+                }
+                Toggle("Udostępniaj każdy nowy klip", isOn: $cloud.autoShare)
+            } header: {
+                Text("Udostępnianie")
+            } footer: {
+                Text("Klip trafia na Twoje konto, a link do schowka. Na Discordzie czy Messengerze link pokaże odtwarzacz. Tytuł i widoczność zmienisz później na stronie.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }
+
+            Section {
+                LabeledContent("Serwer") {
+                    if editingServer.value {
+                        HStack {
+                            TextField("", text: $serverDraft.text, prompt: Text(CloudService.defaultServer))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 240)
+                                .onSubmit(commitServer)
+                            Button("Zapisz", action: commitServer)
+                        }
+                    } else {
+                        HStack {
+                            Text(cloud.server).foregroundStyle(.secondary)
+                            Button("Zmień") {
+                                serverDraft.text = cloud.server
+                                editingServer.value = true
+                            }
+                        }
+                    }
+                }
+                if cloud.server != CloudService.defaultServer {
+                    Button("Przywróć \(CloudService.defaultServer)") {
+                        cloud.server = CloudService.defaultServer
+                        editingServer.value = false
+                    }
+                }
+            } header: {
+                Text("Zaawansowane")
+            } footer: {
+                Text("Zmieniaj tylko, jeśli masz własny serwer. Zmiana wyloguje Cię.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }
+        }
+        .animation(snappy, value: cloud.account)
+        .animation(snappy, value: cloud.pendingLogin)
+    }
+
+    private func commitServer() {
+        let value = serverDraft.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !value.isEmpty, value != cloud.server { cloud.server = value }
+        editingServer.value = false
+    }
+
+    private func initials(_ name: String) -> String {
+        name.split(separator: " ").prefix(2).compactMap(\.first).map { String($0).uppercased() }.joined()
+    }
+}
+
+private struct QuotaRow: View {
+    let quota: CloudService.Quota
+    let openPricing: () -> Void
+
+    var body: some View {
+        let used = Double(quota.usage.bytes)
+        let total = Double(max(quota.plan.storageBytes, 1))
+        LabeledContent {
+            VStack(alignment: .trailing, spacing: 4) {
+                // Drawn by hand: the system bar turns grey whenever the window isn't key.
+                Capsule().fill(.primary.opacity(0.1))
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(used / total > 0.9 ? accent : onColor)
+                            .frame(width: max(6, 220 * min(used / total, 1)))
+                    }
+                    .frame(width: 220, height: 6)
+                Text("\(bytes(quota.usage.bytes)) z \(bytes(quota.plan.storageBytes))"
+                     + (quota.plan.uploadsPerDay > 0 ? " · dziś \(quota.usage.uploadsToday)/\(quota.plan.uploadsPerDay)" : ""))
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("Plan \(quota.plan.name)")
+                    Button("Plany…", action: openPricing).buttonStyle(.link).font(.caption)
+                }
+                Text("Klipy do \(bytes(quota.plan.maxClipBytes))"
+                     + (quota.plan.expiresAt.map { " · ważny do \(Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .omitted))" } ?? ""))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func bytes(_ value: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: value, countStyle: .file)
     }
 }
 
@@ -245,12 +424,12 @@ private struct RecordingSettings: View {
                     }
                 }
                 Picker("Rozdzielczość", selection: $state.maxHeight) {
-                    Text("Natywna").tag(0)
+                    Text("Pełna").tag(0)
                     Text("1440p").tag(1440)
                     Text("1080p").tag(1080)
                     Text("720p").tag(720)
                 }
-                Picker("Klatki na sekundę", selection: $state.fps) {
+                Picker("Płynność", selection: $state.fps) {
                     Text("30 fps").tag(30)
                     Text("60 fps").tag(60)
                 }
@@ -260,13 +439,13 @@ private struct RecordingSettings: View {
                 }
                 .pickerStyle(.segmented)
             } footer: {
-                Text("Przy „Okno: …” nagrywane jest największe okno tej aplikacji. Zmiana ustawień z tej sekcji czyści bufor.")
+                Text("Przy nagrywaniu okna liczy się największe okno aplikacji. Zmiana tych ustawień kasuje to, co już nagrano w tle.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
 
             Section {
-                Picker("Długość bufora", selection: $state.bufferSeconds) {
+                Picker("Pamiętaj ostatnie", selection: $state.bufferSeconds) {
                     Text("30 s").tag(30)
                     Text("1 min").tag(60)
                     Text("2 min").tag(120)
@@ -275,15 +454,15 @@ private struct RecordingSettings: View {
                 }
             } footer: {
                 Text(state.bufferSeconds > CaptureSettings.maxRAMBufferSeconds
-                     ? "Bufor dłuższy niż 2 min jest trzymany na dysku (w pamięci podręcznej), żeby nie zajmował gigabajtów RAM-u. Oznacza to ciągły zapis ok. \(estimate) na minutę."
-                     : "Bufor jest trzymany w pamięci RAM (ok. \(estimate) na minutę).")
+                     ? "Ponad 2 minuty trzymane są na dysku, żeby nie zajmowały pamięci. To ciągły zapis około \(estimate) na minutę."
+                     : "Nagranie jest trzymane w pamięci, około \(estimate) na minutę.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
 
             Section("Oszczędzanie energii") {
-                Toggle("Wstrzymuj bufor przy zasilaniu z baterii", isOn: $state.pauseOnBattery)
-                Toggle("Wstrzymuj bufor w trybie niskiego zużycia energii", isOn: $state.pauseOnLowPower)
+                Toggle("Wstrzymuj na baterii", isOn: $state.pauseOnBattery)
+                Toggle("Wstrzymuj w trybie oszczędzania energii", isOn: $state.pauseOnLowPower)
             }
         }
     }
@@ -312,11 +491,11 @@ private struct AudioSettings: View {
 
     var body: some View {
         Form {
-            Section("Źródła") {
-                Toggle("Dźwięk systemu (wszystko, co słychać z komputera)", isOn: $state.includeSystemAudio)
+            Section("Co nagrywać") {
+                Toggle("Dźwięk komputera", isOn: $state.includeSystemAudio)
                 Toggle("Mikrofon", isOn: $state.includeMic)
-                Picker("Urządzenie", selection: $state.micSelection) {
-                    Text("Automatycznie (omija mikrofony Bluetooth)").tag(Microphones.auto)
+                Picker("Który mikrofon", selection: $state.micSelection) {
+                    Text("Automatycznie").tag(Microphones.auto)
                     Divider()
                     ForEach(state.microphones) { mic in
                         Text(mic.isBluetooth ? "\(mic.name) – Bluetooth" : mic.name).tag(mic.id)
@@ -324,14 +503,14 @@ private struct AudioSettings: View {
                 }
                 .disabled(!state.includeMic)
                 if state.includeMic, state.activeMic?.isBluetooth == true {
-                    Label("Nagrywanie z mikrofonu Bluetooth przełącza słuchawki w tryb rozmowy (mono, gorsza jakość muzyki).",
+                    Label("Mikrofon w słuchawkach Bluetooth pogarsza jakość muzyki.",
                           systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 }
             }
 
             Section {
-                LabeledContent("Dźwięk systemu") {
+                LabeledContent("Dźwięk komputera") {
                     HStack {
                         Slider(value: $state.mixSystemVolume, in: 0...1)
                         Text("\(Int(state.mixSystemVolume * 100))%").monospacedDigit().frame(width: 40, alignment: .trailing)
@@ -343,11 +522,11 @@ private struct AudioSettings: View {
                         Text("\(Int(state.mixMicVolume * 100))%").monospacedDigit().frame(width: 40, alignment: .trailing)
                     }
                 }
-                Toggle("Ogranicznik (chroni miks przed przesterowaniem)", isOn: $state.limiter)
+                Toggle("Chroń przed przesterowaniem", isOn: $state.limiter)
             } header: {
-                Text("Ścieżka „Miks”")
+                Text("Głośność w klipie")
             } footer: {
-                Text("Dotyczy tylko zmiksowanej ścieżki (i eksportu MP4). Osobne ścieżki systemu i mikrofonu zawsze zostają nietknięte. Jeśli gra zagłusza głos, ścisz dźwięk systemu.")
+                Text("Tak brzmi klip przy odtwarzaniu i po udostępnieniu linkiem. Osobne nagrania komputera i mikrofonu zostają bez zmian. Jeśli gra zagłusza głos, ścisz dźwięk komputera.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
@@ -361,16 +540,37 @@ private struct ShortcutSettings: View {
     var body: some View {
         Form {
             Section {
-                row(.toggleClip, "Klip", "Zapisuje ostatnie \(state.bufferLabel) i nagrywa dalej; drugie naciśnięcie kończy.")
-                row(.instantClip, "Szybki zapis", "Od razu zapisuje ostatnie \(state.bufferLabel), bez dalszego nagrywania.")
-                row(.marker, "Znacznik", "W trakcie nagrywania dodaje rozdział – widać go w QuickTime i edytorach.")
+                row(.toggleClip, "Nagraj", "Zapisuje ostatnie \(state.bufferLabel) i nagrywa dalej. Drugie naciśnięcie kończy.")
+                row(.instantClip, "Zapisz", "Od razu zapisuje ostatnie \(state.bufferLabel).")
+                row(.marker, "Znacznik", "Zaznacza ważny moment podczas nagrywania.")
             } footer: {
-                Text("Kliknij skrót i naciśnij nową kombinację. ⌫ usuwa skrót, Esc anuluje. Skróty działają globalnie, także w grach i pełnym ekranie.")
+                Text("Kliknij skrót i naciśnij nowe klawisze. ⌫ usuwa, Esc anuluje. Skróty działają wszędzie, także w grach.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }
+
+            Section {
+                ForEach(Self.automation, id: \.url) { item in
+                    LabeledContent(item.title) {
+                        CopyableCode(text: item.url)
+                    }
+                }
+            } header: {
+                Text("Automatyzacja")
+            } footer: {
+                Text("Te adresy działają w aplikacji Skróty, na Stream Decku i w Terminalu. Kliknij adres, aby go skopiować.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
         }
     }
+
+    private static let automation: [(title: String, url: String)] = [
+        ("Zapisz ostatnie sekundy", "cliprecorder://save"),
+        ("Nagraj / zatrzymaj", "cliprecorder://record"),
+        ("Dodaj znacznik", "cliprecorder://marker"),
+        ("Wstrzymaj / wznów", "cliprecorder://pause"),
+    ]
 
     private func row(_ action: HotKeyCenter.Action, _ title: String, _ detail: String) -> some View {
         LabeledContent {
@@ -408,9 +608,9 @@ private struct PrivacySettings: View {
                     }
                 }
             } header: {
-                Text("Ukrywaj okna tych aplikacji w nagraniu")
+                Text("Ukryj w nagraniu")
             } footer: {
-                Text("Wybrane aplikacje są niewidoczne w klipach (w ich miejscu widać tło). Działa przy nagrywaniu ekranu. Okna ClipRecorder nigdy nie są nagrywane. Lista pokazuje uruchomione aplikacje.")
+                Text("Okna zaznaczonych aplikacji nie pojawią się w klipach. Lista pokazuje uruchomione aplikacje.")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
             }
@@ -419,8 +619,14 @@ private struct PrivacySettings: View {
 
     private var apps: [AppState.AppChoice] {
         var apps = state.runningApps
+        // Excluded apps that aren't running: look up their real name and icon.
         for id in state.excludedBundleIDs where !apps.contains(where: { $0.id == id }) {
-            apps.append(AppState.AppChoice(id: id, name: id, icon: nil))
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+                let name = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+                apps.append(AppState.AppChoice(id: id, name: name, icon: NSWorkspace.shared.icon(forFile: url.path)))
+            } else {
+                apps.append(AppState.AppChoice(id: id, name: id, icon: nil))
+            }
         }
         return apps
     }
@@ -434,6 +640,37 @@ private struct PrivacySettings: View {
     }
 }
 
+/// Monospaced snippet that copies itself on click.
+private struct CopyableCode: View {
+    let text: String
+    @StateObject private var copied = Flag()
+
+    var body: some View {
+        Button {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            withAnimation(snappy) { copied.value = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.2))
+                withAnimation(snappy) { copied.value = false }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(text).font(.system(size: 11, design: .monospaced))
+                Image(systemName: copied.value ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(copied.value ? onColor : .secondary)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
+        }
+        .buttonStyle(.plain)
+        .help("Kliknij, aby skopiować")
+    }
+}
+
 // MARK: - Key recorder
 
 /// Click, then press a key combination. ⌫ clears, Esc cancels.
@@ -444,10 +681,21 @@ struct KeyRecorder: View {
     final class Model: ObservableObject {
         @Published var isRecording = false
         private var monitor: Any?
+        private var resignObserver: Any?
+        /// Only one recorder listens at a time.
+        private static weak var active: Model?
 
         func start(_ onCombo: @escaping (KeyCombo?) -> Void) {
             stop()
+            if let other = Self.active, other !== self { other.stop() }
+            Self.active = self
             isRecording = true
+            HotKeyCenter.shared.suspend()
+            // Clicking away must not leave the global shortcuts switched off.
+            resignObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stop() }
+            }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                 guard let self else { return event }
                 switch Int(event.keyCode) {
@@ -471,10 +719,17 @@ struct KeyRecorder: View {
         func stop() {
             if let monitor { NSEvent.removeMonitor(monitor) }
             monitor = nil
+            if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+            resignObserver = nil
+            let wasRecording = isRecording
             isRecording = false
+            if wasRecording { HotKeyCenter.shared.resume() }
         }
 
-        deinit { if let monitor { NSEvent.removeMonitor(monitor) } }
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            if isRecording { HotKeyCenter.shared.resume() }
+        }
     }
 
     var body: some View {
@@ -502,5 +757,6 @@ struct KeyRecorder: View {
             .animation(snappy, value: model.isRecording)
         }
         .buttonStyle(.plain)
+        .onDisappear { model.stop() }
     }
 }

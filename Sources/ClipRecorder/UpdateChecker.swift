@@ -12,6 +12,9 @@ final class UpdateChecker: ObservableObject {
 
     @Published private(set) var available: Release?
 
+    /// Snapshots only.
+    func preview(_ release: Release?) { available = release }
+
     private let repo = Bundle.main.object(forInfoDictionaryKey: "ClipRecorderUpdateRepo") as? String
     private let current = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     private var timer: Timer?

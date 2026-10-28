@@ -8,7 +8,15 @@ enum ClipLibrary {
     static func newClipURL(in directory: URL) -> URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'o' HH.mm.ss"
-        return directory.appendingPathComponent("Klip \(formatter.string(from: Date())).mov")
+        let name = "Klip \(formatter.string(from: Date()))"
+        // Two clips within the same second (double-tapped hotkey) must not collide.
+        var url = directory.appendingPathComponent("\(name).mov")
+        var n = 2
+        while FileManager.default.fileExists(atPath: url.path) {
+            url = directory.appendingPathComponent("\(name) (\(n)).mov")
+            n += 1
+        }
+        return url
     }
 
     struct Entry {
@@ -17,7 +25,7 @@ enum ClipLibrary {
         let size: Int
     }
 
-    /// Clips made by this app (plus their MP4 exports), newest first.
+    /// Clips made by this app, newest first.
     static func clips(in directory: URL) -> [Entry] {
         let keys: [URLResourceKey] = [.creationDateKey, .fileSizeKey]
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: keys)) ?? []

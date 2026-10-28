@@ -153,7 +153,8 @@ struct Toast: View {
     private var kind: Kind {
         let t = text.lowercased()
         if t.contains("nie powiódł") || t.contains("nie udało") || t.contains("przerwane") || t.contains("brak") { return .error }
-        if t.hasPrefix("zapisano") || t.hasPrefix("mp4 gotowy") || t.hasPrefix("przycięto") || t.hasPrefix("przeniesiono") { return .success }
+        if t.hasPrefix("zapisano") || t.hasPrefix("przycięto") || t.hasPrefix("przeniesiono")
+            || t.hasPrefix("link skopiowany") || t.hasPrefix("zalogowano") { return .success }
         return .info
     }
 
@@ -182,4 +183,42 @@ struct Toast: View {
 /// with the Command Line Tools toolchain).
 final class Flag: ObservableObject {
     @Published var value = false
+}
+
+/// Editable text kept outside the bound model until committed.
+final class TextDraft: ObservableObject {
+    @Published var text = ""
+}
+
+/// Entry of a `PopupMenuButton` menu.
+struct PopupMenuItem {
+    var title: String
+    var enabled = true
+    var action: (() -> Void)?
+
+    static let separator = PopupMenuItem(title: "")
+    static func header(_ title: String) -> PopupMenuItem { PopupMenuItem(title: title, enabled: false) }
+}
+
+/// A plain button that opens a native menu under the mouse. SwiftUI's `Menu`
+/// always draws a system pop-up button, which doesn't match borderless footers.
+struct PopupMenuButton<Label: View>: View {
+    let items: () -> [PopupMenuItem]
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        Button {
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            for item in items() {
+                if item.title.isEmpty { menu.addItem(.separator()); continue }
+                let entry = ClosureMenuItem(title: item.title) { item.action?() }
+                entry.isEnabled = item.enabled && item.action != nil
+                menu.addItem(entry)
+            }
+            menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        } label: {
+            label
+        }
+    }
 }
